@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+
+- The doctor no longer reports a problem when Koovi is installed as a Claude Code plugin.
+  Plugins carry their own hooks, so there is nothing in settings.json to find.
+
 ## 0.9.0
 
 First public release, macOS only.

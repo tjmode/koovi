@@ -1,19 +1,30 @@
 {
   "name": "koovi",
-  "owner": { "name": "tjmode", "url": "https://github.com/tjmode" },
+  "owner": {
+    "name": "tjmode",
+    "url": "https://github.com/tjmode"
+  },
   "description": "Koovi: hear which session finished or needs you.",
   "plugins": [
     {
       "name": "koovi",
       "source": "./",
       "displayName": "Koovi",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "description": "A voice that tells you which of your parallel sessions finished or needs an answer, and stays quiet the rest of the time.",
-      "author": { "name": "tjmode", "url": "https://github.com/tjmode" },
+      "author": {
+        "name": "tjmode",
+        "url": "https://github.com/tjmode"
+      },
       "homepage": "https://github.com/tjmode/koovi",
       "repository": "https://github.com/tjmode/koovi",
       "license": "MIT",
-      "keywords": ["voice", "notifications", "multi-session", "macos"],
+      "keywords": [
+        "voice",
+        "notifications",
+        "multi-session",
+        "macos"
+      ],
       "category": "productivity"
     }
   ]

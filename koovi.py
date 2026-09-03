@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.9.0"
+KOOVI_VERSION = "0.9.1"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -1356,6 +1356,15 @@ def cmd_log(n="30"):
     return 0
 
 
+def claude_plugin_enabled():
+    """True when Koovi is installed as a Claude Code plugin, which carries its own hooks."""
+    try:
+        enabled = json.loads((Path.home() / ".claude" / "settings.json").read_text()).get("enabledPlugins") or {}
+    except Exception:
+        return False
+    return any(name.split("@")[0] == "koovi" and on for name, on in enabled.items())
+
+
 def cmd_doctor():
     ok = True
 
@@ -1382,13 +1391,15 @@ def cmd_doctor():
     app, title = front_window()
     check("focus check works" + ("" if app else f" (not available on {OS})"), bool(app) or not front_window_command(),
           "the focus check will be skipped; Koovi speaks anyway")
+    if claude_plugin_enabled():
+        check("Claude Code: installed as a plugin (it brings its own hooks)", True)
     for tool, path, events in (
-            ("Claude Code", Path.home() / ".claude" / "settings.json",
+            (None if claude_plugin_enabled() else "Claude Code", Path.home() / ".claude" / "settings.json",
              ("UserPromptSubmit", "Stop", "Notification", "SessionEnd", "SubagentStop")),
             ("Codex", Path.home() / ".codex" / "hooks.json",
              ("UserPromptSubmit", "Stop", "PermissionRequest", "SessionEnd", "SubagentStop")),
             ("Cursor", Path.home() / ".cursor" / "hooks.json", ("beforeSubmitPrompt", "stop", "sessionEnd"))):
-        if not path.parent.exists():
+        if not tool or not path.parent.exists():
             continue
         try:
             hooks = (json.loads(path.read_text()) if path.exists() else {}).get("hooks", {})
