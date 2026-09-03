@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.8
+
+- One command per job: `/koovi:status`, `/koovi:doctor`, `/koovi:log`, `/koovi:quiet`,
+  `/koovi:voice`, `/koovi:mute`, `/koovi:unmute`, `/koovi:test`, `/koovi:set`. Type `/koovi:`
+  and they all appear, instead of remembering words to pass to one command.
+
 ## 0.9.7
 
 - The command is `/koovi:koovi`, not `/koovi`. Claude Code puts every plugin command behind the

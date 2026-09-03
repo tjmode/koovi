@@ -1,7 +1,7 @@
 # Koovi
 
 [![tests](https://github.com/tjmode/koovi/actions/workflows/ci.yml/badge.svg)](https://github.com/tjmode/koovi/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.9.7-2ea44f)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.9.8-2ea44f)](CHANGELOG.md)
 [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-ready-black?logo=apple&logoColor=white)](#platforms)
 [![Claude Code · Codex · Cursor](https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-supported-6b46c1)](#install)
@@ -62,20 +62,20 @@ in `~/.koovi` are never touched by either.
 
 ## Commands
 
-In Claude Code type `/koo` and pick **`/koovi:koovi`**, then the word. Plugins namespace their
-commands, so the full form is `/koovi:koovi status`. From a terminal it is `./koovi.sh status`.
+Type `/koovi:` in Claude Code and they all appear. In a terminal, the same words after
+`./koovi.sh`.
 
 | | |
 | --- | --- |
-| `status` | mode, muted projects, the last few decisions |
-| `log 30` | why it spoke, or why it stayed quiet |
-| `doctor` | check every part, and say what is missing |
-| `quiet` | stop talking, flash the screen instead |
-| `voice` · `auto` | talk again · talk only on headphones |
-| `mute` · `unmute` | silence this project, or one you name |
-| `test asking Payments "Postgres or SQLite?"` | hear a sample line |
-| `voices` · `voice Daniel` | list voices · switch and hear one |
-| `set rate 190` | change any setting, nested too: `set light.corner bottom-left` |
+| `/koovi:status` | mode, muted projects, the last few decisions |
+| `/koovi:log 30` | why it spoke, or why it stayed quiet |
+| `/koovi:doctor` | check every part, and say what is missing |
+| `/koovi:quiet` | stop talking, flash the screen instead |
+| `/koovi:voice` · `/koovi:voice Daniel` | talk again · switch voice and hear it |
+| `/koovi:mute` · `/koovi:unmute` | silence this project, or one you name |
+| `/koovi:test asking Payments "Postgres or SQLite?"` | hear a sample line |
+| `/koovi:set rate 190` | change any setting, nested too: `set light.corner bottom-left` |
+| `/koovi:koovi auto` | and anything else: `light`, `voices`, `mic`, `version` |
 
 ## When it stays quiet
 
@@ -89,7 +89,7 @@ Questions and permission requests are always spoken, and it says what was asked.
 the same folder are told apart by what you asked for: *"Checkout, the fix the login bug session"*.
 
 > [!TIP]
-> Working in an office? `/koovi:koovi quiet` swaps the voice for a coloured frame that flashes
+> Working in an office? `/koovi:quiet` swaps the voice for a coloured frame that flashes
 > around your screens for five seconds with the session named in the corner. `/koovi:koovi auto`
 > picks by whether headphones are plugged in.
 
