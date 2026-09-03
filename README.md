@@ -56,6 +56,10 @@ remove. Needs Python 3.8 or newer, nothing else.
 `claude plugin update koovi` and restart. For the clone, `git pull` in the folder. Your settings
 in `~/.koovi` are never touched by either.
 
+> [!IMPORTANT]
+> Koovi speaks on the machine where the session runs. Install it on the computer you sit at. In a
+> cloud or web session it runs on a server with no speakers, so you would hear nothing.
+
 ## Commands
 
 `/koovi <word>` in Claude Code, `./koovi.sh <word>` anywhere else.
