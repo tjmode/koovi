@@ -42,6 +42,10 @@ cd koovi && python3 install.py
 Sets up every tool it finds. Add `--claude`, `--codex` or `--cursor` for one, `--uninstall` to
 remove. Needs Python 3.8 or newer, nothing else.
 
+**Updating** · `/plugin` in Claude Code shows when a new version is out, or run
+`claude plugin update koovi` and restart. For the clone, `git pull` in the folder. Your settings
+in `~/.koovi` are never touched by either.
+
 ## Commands
 
 `/koovi <word>` in Claude Code, `./koovi.sh <word>` anywhere else.
