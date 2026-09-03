@@ -322,7 +322,13 @@ class Platforms(Sandbox):
     def test_the_voice_on_each_machine(self):
         self.cfg.update(voice="Zira", rate=190)
         self.use("mac")
+        self.addCleanup(setattr, koovi, "voice_installed", koovi.voice_installed)
+        koovi.voice_installed = lambda name: True
         self.assertEqual(koovi.speech_command(self.cfg, "hi")[0], ["say", "-v", "Zira", "-r", "190", "hi"])
+        koovi.voice_installed = lambda name: False  # a name this Mac does not have: never silence
+        self.assertEqual(koovi.speech_command(self.cfg, "hi")[0], ["say", "-r", "190", "hi"])
+        self.assertIn("speaking with the system voice", self.diary())
+        koovi.voice_installed = lambda name: True
         self.use("windows")
         command, env = koovi.speech_command(self.cfg, "hi")
         self.assertEqual(command[0], "powershell")

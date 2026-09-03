@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.9.4"
+KOOVI_VERSION = "0.9.5"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -830,11 +830,25 @@ WINDOWS_SPEAK = ("Add-Type -AssemblyName System.Speech;"
                  "$s.Speak($env:KOOVI_TEXT)")
 
 
+def voice_installed(name):
+    """Is this voice on this Mac? Any language, not only English. True when we cannot tell."""
+    if not name:
+        return True
+    try:
+        out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        return True  # cannot ask: let `say` decide
+    return any(line.startswith(str(name) + " ") for line in out.splitlines())
+
+
 def speech_command(cfg, text):
     """How to say a line out loud on this machine: (command, extra environment). None if nothing can talk."""
     voice, rate = str(cfg["voice"]), int(cfg["rate"])
     if OS == MAC:
-        return ["say", "-v", voice, "-r", str(rate), text], {}
+        if voice_installed(voice):
+            return ["say", "-v", voice, "-r", str(rate), text], {}
+        log("voice", "-", f"voice '{voice}' is not on this Mac, speaking with the system voice instead")
+        return ["say", "-r", str(rate), text], {}  # the Mac's own voice, so a wrong name is never silence
     if OS == WINDOWS:
         # Windows counts speed from -10 to 10, where 0 is about 200 words a minute.
         return PS + [WINDOWS_SPEAK], {"KOOVI_TEXT": text, "KOOVI_VOICE": "" if voice.lower() in ("samantha", "koovi") else voice,
@@ -1302,7 +1316,8 @@ def cmd_test(kind="done", project="Payments", *question):
         return 1
     with locked_state() as st:
         line = pick_line(cfg, kind, project, st, question=" ".join(question))
-    print(f"[{cfg['voice']}] {line}")
+    heard = cfg["voice"] if (OS != MAC or voice_installed(cfg["voice"])) else "the Mac's own voice"
+    print(f"[{heard}] {line}")
     speak(cfg, line)
     log("test", project, f"SPEAK {kind}: {line}")
     return 0
@@ -1384,10 +1399,15 @@ def cmd_doctor():
     command, _ = speech_command(cfg, "test")
     check("something on this machine can talk", bool(command),
           "install a speech program: sudo apt install speech-dispatcher")
-    names = installed_voices()
-    if names:
-        check(f"voice '{cfg['voice']}' installed", str(cfg["voice"]) in names,
-              f"pick one of: {', '.join(names[:8])}{' ...' if len(names) > 8 else ''}  (koovi voices)")
+    if OS == MAC:
+        here = voice_installed(cfg["voice"])
+        check(f"voice '{cfg['voice']}'" + ("" if here else " is not on this Mac, so the system voice is used"
+                                                          " (see: koovi voices)"), True)
+    else:
+        names = installed_voices()
+        if names:
+            check(f"voice '{cfg['voice']}' installed", str(cfg["voice"]) in names,
+                  f"pick one of: {', '.join(names[:8])}{' ...' if len(names) > 8 else ''}  (koovi voices)")
     app, title = front_window()
     check("focus check works" + ("" if app else f" (not available on {OS})"), bool(app) or not front_window_command(),
           "the focus check will be skipped; Koovi speaks anyway")

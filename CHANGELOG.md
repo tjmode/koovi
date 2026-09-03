@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.5
+
+- A voice name that is not on this Mac no longer risks silence. Koovi checks first, speaks with
+  the Mac's own voice instead, and says so in the log. Not every macOS version falls back on its
+  own, and the shipped default, Samantha, is not on every Mac.
+- The doctor's voice check covers voices in any language, not only English ones.
+
 ## 0.9.4
 
 - Dropped `displayName` from the marketplace entry. Older Claude Code versions reject unknown
