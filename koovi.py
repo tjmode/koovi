@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.9.2"
+KOOVI_VERSION = "0.9.3"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -108,7 +108,7 @@ DEFAULTS = {
     },
     "projects": {},
     "phrases": {
-        "done": ["{assistant} reporting, {user}. {project} is done."],
+        "done": ["{assistant} reporting, {user}. {project} is done.", "{assistant} reporting. {project} is done."],
         "also_done": ["{project} is also done, {user}."],
         "asking": ["{user}, {project} needs a decision from you.", "{user}, {project} is asking: {question}"],
         "permission": ["{user}, {project} wants permission to proceed."],

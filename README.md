@@ -1,7 +1,7 @@
 # Koovi
 
 [![tests](https://github.com/tjmode/koovi/actions/workflows/ci.yml/badge.svg)](https://github.com/tjmode/koovi/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.9.2-2ea44f)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.9.3-2ea44f)](CHANGELOG.md)
 [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-ready-black?logo=apple&logoColor=white)](#platforms)
 [![Claude Code · Codex · Cursor](https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-supported-6b46c1)](#install)
@@ -10,12 +10,15 @@
 window while three others run.
 
 ```
-"Koovi reporting, boss. Checkout is done."
+"Koovi reporting. Checkout is done."
 "Payments is asking: should we use Postgres or SQLite?"
 ```
 
 One line, one reminder if you do not reply, then silence. Your next message in that window is the
-answer. Koovi is Tamil for "call out".
+answer.
+
+Both names are yours: `koovi set assistant Jarvis` changes what the voice calls itself, and
+`koovi set user bro` changes what it calls you. Koovi is Tamil for "call out".
 
 ## Install
 

@@ -80,6 +80,7 @@ phrases:
   done:
     - "Hey {user}, {project} is done."
     - "{assistant} reporting, {user}. {project} is done."
+    - "{assistant} reporting. {project} is done."
     - "{user}, {project} has finished. Take a look when you're free."
     - "Mission complete on {project}, {user}."
     - "{project} is ready for your eyes, {user}."

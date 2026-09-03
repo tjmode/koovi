@@ -10,7 +10,7 @@
       "name": "koovi",
       "source": "./",
       "displayName": "Koovi",
-      "version": "0.9.2",
+      "version": "0.9.3",
       "description": "A voice that tells you which of your parallel sessions finished or needs an answer, and stays quiet the rest of the time.",
       "author": {
         "name": "tjmode",

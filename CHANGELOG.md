@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.3
+
+- A spoken line that does not use your name: "Koovi reporting. Checkout is done."
+  Both names, what it calls itself and what it calls you, were always yours to change;
+  now the README says so.
+
 ## 0.9.2
 
 - Rewritten README: full reference tables for the commands, the rules and every setting.
