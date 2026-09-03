@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.6
+
+- Fixed the bug that made a brand new install say nothing at all. The settings file ships with
+  `projects:` and only comments under it, which reads as empty rather than as a list, and every
+  announcement then failed with `AttributeError: 'NoneType' object has no attribute 'get'`.
+  A heading with nothing under it now means "leave this alone".
+- The doctor no longer reports Codex and Cursor as faults when you only use Claude Code, and a
+  slow or switched-off browser check is a note rather than a failure.
+
 ## 0.9.5
 
 - A voice name that is not on this Mac no longer risks silence. Koovi checks first, speaks with

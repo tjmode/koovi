@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.9.5"
+KOOVI_VERSION = "0.9.6"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -274,6 +274,8 @@ def load_config():
         log("config", "-", f"ERROR reading {CONFIG_PATH}: {exc}")
         user = {}
     for key, val in user.items():
+        if val is None:
+            continue  # a heading with nothing under it, like "projects:", means "leave it alone"
         if isinstance(val, dict) and isinstance(cfg.get(key), dict):
             cfg[key].update(val)
         else:
@@ -287,7 +289,7 @@ def load_config():
 
 
 def project_settings(cfg, folder):
-    entry = cfg["projects"].get(folder) or {}
+    entry = (cfg.get("projects") or {}).get(folder) or {}
     if isinstance(entry, str):
         entry = {"say": entry}
     say = entry.get("say") or folder.replace("-", " ").replace("_", " ")
@@ -1413,30 +1415,38 @@ def cmd_doctor():
           "the focus check will be skipped; Koovi speaks anyway")
     if claude_plugin_enabled():
         check("Claude Code: installed as a plugin (it brings its own hooks)", True)
-    for tool, path, events in (
-            (None if claude_plugin_enabled() else "Claude Code", Path.home() / ".claude" / "settings.json",
+    for tool, required, path, events in (
+            ("Claude Code", not claude_plugin_enabled(), Path.home() / ".claude" / "settings.json",
              ("UserPromptSubmit", "Stop", "Notification", "SessionEnd", "SubagentStop")),
-            ("Codex", Path.home() / ".codex" / "hooks.json",
+            ("Codex", False, Path.home() / ".codex" / "hooks.json",
              ("UserPromptSubmit", "Stop", "PermissionRequest", "SessionEnd", "SubagentStop")),
-            ("Cursor", Path.home() / ".cursor" / "hooks.json", ("beforeSubmitPrompt", "stop", "sessionEnd"))):
-        if not tool or not path.parent.exists():
-            continue
+            ("Cursor", False, Path.home() / ".cursor" / "hooks.json",
+             ("beforeSubmitPrompt", "stop", "sessionEnd"))):
+        if not path.parent.exists() or (tool == "Claude Code" and not required):
+            continue  # the plugin line above already covered Claude Code
         try:
             hooks = (json.loads(path.read_text()) if path.exists() else {}).get("hooks", {})
             found = [ev for ev in events if any("koovi" in json.dumps(entry) for entry in hooks.get(ev, []))]
-            check(f"{tool} hooks ({path})", len(found) == len(events),
-                  f"set up for {found or 'nothing'}; run: python3 install.py")
         except Exception as exc:
-            check(f"{tool} hooks ({path})", False, str(exc))
+            check(f"{tool} hooks ({path})", not required, str(exc))
+            continue
+        if len(found) == len(events):
+            check(f"{tool}: set up", True)
+        elif required:
+            check(f"{tool} hooks ({path})", False, f"set up for {found or 'nothing'}; run: python3 install.py")
+        else:
+            check(f"{tool}: not set up. Only needed if you use it: python3 install.py --{tool.split()[0].lower()}", True)
     sites = [str(x) for x in (cfg.get("browser_music_sites") or [])]
     for app, flavor in _running_browsers():
         status, info = _run_browser_js(app, flavor, "1", sites)
         if status == "ok":
             check(f"{app}: can turn down music tabs" + ("" if info else " (no music tab open right now)"), True)
-        elif status == "off":
-            check(f"{app}: can turn down music tabs", False, f"in {app} switch on: {info}")
+        elif status == "off":  # a switch you turn on once, and only if you play music in a browser
+            check(f"{app}: music tabs stay loud unless you switch on: {info}", True)
+        elif "timed out" in info.lower() or "TimeoutExpired" in info:
+            check(f"{app}: did not answer in time; music tabs may stay loud", True)
         else:
-            check(f"{app}: can turn down music tabs", False, info)
+            check(f"{app}: cannot turn down music tabs ({info[:60]})", True)
     audio_ok = _audio_prop(1, "dIn ", "glob") is not None if OS == MAC else True
     check("microphone check works" + ((" (mic is in use right now)" if mic_in_use() else " (mic is free right now)") if audio_ok else ""),
           audio_ok, "the sound system did not answer; Koovi will talk without waiting for the mic")

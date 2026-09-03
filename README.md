@@ -1,7 +1,7 @@
 # Koovi
 
 [![tests](https://github.com/tjmode/koovi/actions/workflows/ci.yml/badge.svg)](https://github.com/tjmode/koovi/actions/workflows/ci.yml)
-[![version](https://img.shields.io/badge/version-0.9.5-2ea44f)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.9.6-2ea44f)](CHANGELOG.md)
 [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-ready-black?logo=apple&logoColor=white)](#platforms)
 [![Claude Code · Codex · Cursor](https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-supported-6b46c1)](#install)

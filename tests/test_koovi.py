@@ -71,6 +71,29 @@ class ConfigReader(Sandbox):
         for key, value in koovi.DEFAULTS["timing"].items():
             self.assertEqual(example["timing"][key], value, f"they disagree on timing.{key}")
 
+    def test_a_brand_new_install_can_announce(self):
+        """The whole path a first-time user takes, on the settings file we ship."""
+        koovi.EXAMPLE_CONFIG = ROOT / "config.example.yaml"
+        cfg = koovi.load_config()                       # writes the settings file, as a new install does
+        self.assertEqual(cfg["projects"], {})           # a heading with only comments under it is not None
+        self.assertEqual(koovi.project_settings(cfg, "some-folder"), {"say": "some folder", "mute": False})
+        path = transcript(self.tmp / "t.jsonl", tool_uses=2)
+        now = time.time()
+        with koovi.locked_state() as st:
+            s = st["sessions"].setdefault("new", {"folder": "some-folder", "first_seen": now - 600,
+                                                  "last_seen": now, "last_prompt": now - 40})
+            koovi.decide_stop(cfg, st, s, "new", {"transcript_path": str(path)}, "Some folder", "some-folder", now)
+        self.assertEqual(len(self.jobs), 1, "a fresh install must be able to speak")
+        self.assertNotIn("ERROR", self.diary())
+
+    def test_an_empty_heading_never_replaces_a_default(self):
+        koovi.CONFIG_PATH.write_text("projects:\nphrases:\ntiming:\nlight:\nuser: chief\n")
+        cfg = koovi.load_config()
+        self.assertEqual(cfg["user"], "chief")
+        self.assertEqual(cfg["timing"]["min_task_seconds"], koovi.DEFAULTS["timing"]["min_task_seconds"])
+        self.assertTrue(cfg["phrases"]["done"] and cfg["light"]["enabled"])
+        self.assertEqual(koovi.project_settings(cfg, "x"), {"say": "x", "mute": False})
+
     def test_reads_the_example_config(self):
         cfg = koovi.parse_yaml((ROOT / "config.example.yaml").read_text())
         self.assertEqual(cfg["assistant"], "Koovi")
@@ -79,7 +102,7 @@ class ConfigReader(Sandbox):
         self.assertEqual(cfg["remind_for"], ["asking", "permission"])
         self.assertIn("{question}", cfg["phrases"]["asking"][0])
         self.assertIsNone(cfg["quiet_hours"]["start"])
-        self.assertEqual(cfg["projects"], None)  # only comments under it
+        self.assertIsNone(cfg["projects"])  # only comments under it; load_config turns this into {}
 
     def test_edge_cases(self):
         text = 'a: "x # kept"\nb: [1, "two", {c: d}]\nname with space: { say: "My app", mute: true }\nempty:\nlist:\n  - "{user} hi"\n  - plain\n'
