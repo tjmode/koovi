@@ -25,11 +25,21 @@ answer.
 
 ## Install
 
-**Claude Code**
+**Claude Code** (one line at a time)
 
 ```
 /plugin marketplace add tjmode/koovi
+```
+```
 /plugin install koovi@koovi
+```
+
+`/plugin` needs an interactive session. If it says it is not available here, such as in a remote
+or web session, run the same thing from a terminal:
+
+```sh
+claude plugin marketplace add tjmode/koovi
+claude plugin install koovi@koovi
 ```
 
 **Codex, Cursor, or without the plugin system**
