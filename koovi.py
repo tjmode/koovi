@@ -14,7 +14,7 @@ Commands used by the hooks (they read a JSON payload on stdin):
   koovi.py session_end    a session was closed        (SessionEnd)
   koovi.py subagent_stop  a subagent finished         (SubagentStop, diary only)
 
-Commands for you (the /koovi command runs these too):
+Commands for you (the /koovi:koovi command in Claude Code runs these too):
   koovi.py status          version, mode, screen light, muted projects, last decisions
   koovi.py voice|quiet|auto   switch how it reaches you: talk, screen light only, or talk only on headphones
   koovi.py mute [folder]   silence one project (default: the folder you are in);  unmute to undo
@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.9.6"
+KOOVI_VERSION = "0.9.7"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)

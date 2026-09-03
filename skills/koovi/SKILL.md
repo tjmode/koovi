@@ -1,6 +1,6 @@
 ---
 name: koovi
-description: Control Koovi, the voice that says which session finished or needs you. Use for /koovi status, voice, quiet, auto, mute, unmute, test, log, doctor, or set KEY VALUE.
+description: Control Koovi, the voice that says which session finished or needs you. Use for status, voice, quiet, auto, mute, unmute, test, log, doctor, or set KEY VALUE.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

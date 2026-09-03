@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.7
+
+- The command is `/koovi:koovi`, not `/koovi`. Claude Code puts every plugin command behind the
+  plugin's name, and the README said otherwise. Type `/koo` and it appears.
+
 ## 0.9.6
 
 - Fixed the bug that made a brand new install say nothing at all. The settings file ships with
