@@ -62,20 +62,29 @@ in `~/.koovi` are never touched by either.
 
 ## Commands
 
-Type `/koovi:` in Claude Code and they all appear. In a terminal, the same words after
-`./koovi.sh`.
+Type `/koovi:` in Claude Code and they all appear.
 
-| | |
-| --- | --- |
-| `/koovi:status` | mode, muted projects, the last few decisions |
-| `/koovi:log 30` | why it spoke, or why it stayed quiet |
-| `/koovi:doctor` | check every part, and say what is missing |
+| Command | What it does |
+| :--- | :--- |
+| `/koovi:status` | how it is set, and the last few decisions |
+| `/koovi:log` | why it spoke, or why it stayed quiet |
+| `/koovi:doctor` | check every part, and name what is missing |
 | `/koovi:quiet` | stop talking, flash the screen instead |
-| `/koovi:voice` · `/koovi:voice Daniel` | talk again · switch voice and hear it |
-| `/koovi:mute` · `/koovi:unmute` | silence this project, or one you name |
-| `/koovi:test asking Payments "Postgres or SQLite?"` | hear a sample line |
-| `/koovi:set rate 190` | change any setting, nested too: `set light.corner bottom-left` |
-| `/koovi:koovi auto` | and anything else: `light`, `voices`, `mic`, `version` |
+| `/koovi:voice` | talk again, or add a name to switch voice |
+| `/koovi:mute` | silence this project, `/koovi:unmute` to undo |
+| `/koovi:test` | hear a sample line |
+| `/koovi:set` | change one setting |
+| `/koovi:koovi` | anything else: `auto`, `light`, `voices`, `mic`, `version` |
+
+Most take an argument, and the same words work in a terminal after `./koovi.sh`:
+
+```sh
+/koovi:log 50
+/koovi:voice Daniel
+/koovi:set rate 190
+/koovi:set light.corner bottom-left
+/koovi:test asking Payments "Postgres or SQLite?"
+```
 
 ## When it stays quiet
 
