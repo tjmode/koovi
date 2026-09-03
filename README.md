@@ -17,8 +17,11 @@ window while three others run.
 One line, one reminder if you do not reply, then silence. Your next message in that window is the
 answer.
 
-Both names are yours: `koovi set assistant Jarvis` changes what the voice calls itself, and
-`koovi set user bro` changes what it calls you. Koovi is Tamil for "call out".
+> [!TIP]
+> Nothing about the voice is fixed. `koovi set assistant Jarvis` changes what it calls itself,
+> `koovi set user bro` changes what it calls you, and `koovi voice Daniel` changes the voice
+> itself. The sentences are a plain list in your settings file, so you can rewrite them or add
+> your own.
 
 ## Install
 
