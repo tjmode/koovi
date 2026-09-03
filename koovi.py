@@ -26,7 +26,7 @@ Commands for you (the /koovi command runs these too):
   koovi.py voices         list the English voices on this Mac
   koovi.py voice NAME     switch to that voice and play a sample
   koovi.py light          what the screen light shows right now (and the current mode)
-  koovi.py light test     show a demo light for 15 seconds
+  koovi.py light test     show a demo flash
   koovi.py light off      clear the screen light
 """
 
@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.9.1"
+KOOVI_VERSION = "0.9.2"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -99,7 +99,7 @@ DEFAULTS = {
     "browser_music_sites": ["youtube.com", "soundcloud.com", "open.spotify.com", "music.apple.com"],
     "quiet_hours": {"start": None, "end": None},
     "timing": {
-        "min_task_seconds": 30,
+        "min_task_seconds": 5,
         "chat_needs_seconds": 120,
         "reminder_after_seconds": 120,
         "reminders": 1,

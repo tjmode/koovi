@@ -1,171 +1,211 @@
 # Koovi
 
-You have four Claude Code windows open. One just finished, another is waiting on an answer,
-and you are looking at a different screen. Koovi tells you which one, out loud:
+Koovi says which of your coding sessions just finished or needs an answer, so you can work in one
+window while three others run.
 
-> "Koovi reporting, boss. Payments is done."
-> "Checkout is asking: should we use Postgres or SQLite?"
+```
+"Koovi reporting, boss. Checkout is done."
+"Payments is asking: should we use Postgres or SQLite?"
+```
 
-Then it stops. One line, one reminder if you still have not replied, and nothing more.
-No badge to clear, no list to manage.
+One line, one reminder if you do not reply, then silence. Your next message in that window counts
+as the answer.
 
-Koovi is Tamil for "call out". The name of the voice is yours to change.
+Works with Claude Code, Codex and Cursor, at the same time. Written for macOS; Windows and Linux
+are in the code but have not been tried on a real machine.
 
-Works with Claude Code, Codex and Cursor.
-
-macOS is the version in daily use. Windows and Linux are written and shipped but have not been
-tried on a real machine yet, so treat them as a first draft and please report what breaks.
+Koovi is Tamil for "call out".
 
 ## Install
 
-**In Claude Code**, two commands:
+Claude Code:
 
 ```
 /plugin marketplace add tjmode/koovi
 /plugin install koovi@koovi
 ```
 
-**For Codex or Cursor**, or if you would rather not use the plugin system:
+Codex, Cursor, or Claude Code without the plugin system:
 
 ```
 git clone https://github.com/tjmode/koovi.git
 cd koovi && python3 install.py
 ```
 
-That sets up every tool it finds on your machine: `~/.claude/settings.json`, `~/.codex/hooks.json`
-and `~/.cursor/hooks.json`. Name one with `--claude`, `--codex` or `--cursor`. Undo it all with
-`python3 install.py --uninstall`. Each file is backed up before it is touched.
+`install.py` sets up every tool it finds: `~/.claude/settings.json`, `~/.codex/hooks.json`,
+`~/.cursor/hooks.json`. Pick one with `--claude`, `--codex`, `--cursor`. Remove with
+`--uninstall`. Each file is copied to a `.bak-koovi-*` backup first.
 
-One Koovi serves all three at once, so a Codex window and a Claude Code window are told apart by
-name just like two Claude Code windows are.
+Needs Python 3.8 or newer. Nothing else, no packages.
 
-Nothing to install besides Python 3.8 or newer, which your Mac already has.
+## Commands
 
-## Use it
+In Claude Code type `/koovi <word>`. Anywhere else run `./koovi.sh <word>`.
 
-Everything runs through one command inside Claude Code:
+| Command | What it does |
+| --- | --- |
+| `status` | version, mode, what the light shows, muted projects, last three decisions |
+| `log [n]` | the last n decisions and why each was made (default 30) |
+| `doctor` | checks every part and names what is missing |
+| `voice` / `quiet` / `auto` | talk, screen light only, or talk only on headphones |
+| `mute [folder]` / `unmute [folder]` | silence one project; no folder means the one you are in |
+| `set KEY VALUE` | change any setting, including nested ones: `set light.corner bottom-left` |
+| `voices` / `voice NAME` | list the voices on this machine, or switch and hear a sample |
+| `test [kind] [project] [question]` | hear a line: `test asking Payments "Postgres or SQLite?"` |
+| `light` / `light test` / `light off` | what the light shows, a demo flash, clear it |
+| `mic` | is anything recording right now |
+| `version` | which version is running |
 
+## When it speaks
+
+| Situation | What happens |
+| --- | --- |
+| Turn under 5 seconds | silent, so your "ok" replies never trigger it |
+| Reply with no tools, under 2 minutes | silent |
+| Reply ending in a question | spoken, with the question itself when it can be read |
+| Permission request | spoken, even if you are looking at that window |
+| Real work finished | spoken once, never repeated |
+| A second project finishing within 30 seconds | a shorter "also done" line |
+| Same window twice within 20 seconds | the second is dropped |
+| A subagent finishing | diary only, so one turn is one announcement |
+| No reply after 2 minutes | one reminder, for questions and permissions only |
+| You reply in that window | the reminder is cancelled |
+
+Two windows in the same folder are told apart by what you asked for: *"Checkout, the fix the login
+bug session"*. `/rename` a window and Koovi uses that name instead.
+
+## Settings
+
+One file, `~/.koovi/config.yaml`, created from `config.example.yaml` the first time Koovi runs.
+Edits take effect on the next announcement. `koovi set` edits it for you and keeps the comments.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `assistant` | `Koovi` | what the voice calls itself |
+| `user` | `boss` | what it calls you |
+| `voice` | `Samantha` | any voice from `koovi voices` |
+| `rate` | `175` | words per minute |
+| `chime` | Glass.aiff | sound used instead of the voice during quiet hours |
+| `mode` | `voice` | `voice`, `quiet` (light only), `auto` (voice on headphones) |
+| `focus_check` | `false` | `true` plays the chime instead of talking when you are on that window |
+| `permission_always_speak` | `true` | permission requests are spoken even then |
+| `always_announce_questions` | `true` | a question is spoken even after a short turn |
+| `wait_for_background_tasks` | `false` | `true` waits for background jobs before saying done; only for short jobs |
+| `remind_for` | `[asking, permission]` | which kinds get the one reminder |
+| `music_duck` / `music_duck_percent` | `true` / `20` | turn music down to this while talking |
+| `browser_music_sites` | youtube, soundcloud, spotify, apple music | tabs treated as music |
+| `wait_for_mic` | `true` | never talk over dictation or a call |
+| `mic_wait_max_seconds` | `120` | after this, play the chime instead |
+| `mic_settle_seconds` | `1.5` | pause after the mic closes before talking |
+| `quiet_hours.start` / `.end` | empty | chime only between these times |
+| `timing.min_task_seconds` | `5` | shorter turns are never announced |
+| `timing.chat_needs_seconds` | `120` | a reply with no tools must run this long to count |
+| `timing.reminder_after_seconds` | `120` | how long before the reminder |
+| `timing.reminders` | `1` | how many reminders; `0` turns them off |
+| `timing.debounce_seconds` | `20` | never speak twice for one window inside this |
+| `timing.also_done_window_seconds` | `30` | a second "done" inside this uses the shorter line |
+| `light.enabled` | `true` | the screen light |
+| `light.when` | `instead_of_voice` | or `always`, to flash while talking too |
+| `light.seconds` | `5` | how long one flash lasts |
+| `light.corner` | `top-right` | where the session is named |
+| `light.pulse` | `true` | blink |
+| `light.colors` / `light.labels` | red and orange | per kind: done, asking, permission, reminder |
+| `projects` | empty | spoken name and mute flag per folder |
+| `phrases` | six done lines, seven asking lines, and so on | the lines it can say |
+
+Phrases take `{assistant}`, `{user}`, `{project}` and `{question}`. Lines containing `{question}`
+are used only when a question could be read, so keep plain ones as a fallback:
+
+```yaml
+projects:
+  checkout-web:     Checkout
+  payments-backend: { say: "Payments backend" }
+  scratch:          { mute: true }
+
+phrases:
+  asking:
+    - "{user}, {project} is asking: {question}"
+    - "{project} needs you."
 ```
-/koovi status          how it is set, and the last few decisions
-/koovi quiet           stop talking, use the screen light instead
-/koovi voice           talk again
-/koovi auto            talk only when headphones are on
-/koovi mute            silence this project
-/koovi test asking     hear a sample line
-/koovi log 30          why it spoke, or why it stayed quiet
-/koovi doctor          check the setup
-/koovi set rate 190    change any setting
-```
 
-From a terminal, the same words work: `./koovi.sh status`.
+## The screen light
 
-## Your settings
+`koovi quiet` stops all sound. Instead a coloured frame blinks around every screen for five
+seconds with the session named in a corner: *"Checkout  done"*, *"Payments  needs an answer"*.
+Clicks pass through it, and it follows the same ladder as the voice: one flash, one reminder
+flash, then nothing.
 
-One file, `~/.koovi/config.yaml`. It reads like a note, and Koovi picks up changes on the next
-announcement. The version in this repo is `config.example.yaml`; your copy is made from it the
-first time Koovi runs.
+`koovi auto` decides for you, by whether headphones are the output.
 
-Worth knowing:
+The light is a small helper in `light/`, shipped prebuilt for Intel and Apple silicon. It starts
+when needed and quits when idle. If the shipped copy will not run, Koovi builds a new one with
+Xcode's command line tools.
 
-- `assistant` and `user`: what the voice calls itself and what it calls you.
-- `voice` and `rate`: any Mac voice. `/koovi voices` lists them.
-- `projects`: the spoken name for each folder, and which ones to keep silent.
-- `phrases`: the lines it can say. Add your own. Blanks: `{assistant}` `{user}` `{project}` `{question}`.
-- `timing`: how long a turn must run before it counts, and how long before the one reminder.
+## Music and the microphone
 
-## When it speaks, and when it does not
+Koovi turns Apple Music, Spotify and browser music tabs down to 20 percent while it talks, then
+puts them back. Browser tabs need one setting turned on by hand:
 
-- Short turn, under five seconds: quiet. Your "OK" replies never trigger it.
-- A reply that ran no tools: quiet, unless it took over two minutes.
-- A question for you: always spoken, and Koovi says the question itself when it can read one.
-- A permission request: always spoken. That one blocks the session.
-- Background work still running: announced as usual. The wake-up message itself never counts as
-  your reply. Set `wait_for_background_tasks: true` to stay quiet until that work wakes the
-  session instead, which only suits short background jobs.
-- A subagent finishing: diary only. The session speaks when it is really done.
-- Two projects finishing together: the second gets a shorter "also done" line.
-- Anything else: one line. A question or permission request gets one reminder after two minutes,
-  then silence. Finished work is never repeated.
-- Your next message in that window is the answer. It cancels the reminder.
+- Brave and Chrome: View > Developer > Allow JavaScript from Apple Events
+- Safari: Develop > Allow JavaScript from Apple Events
 
-Two windows in the same folder are told apart by what you asked for: "Checkout, the fix the login
-bug session". Name a window yourself with `/rename` and Koovi uses that instead.
+If anything is recording, Koovi waits. If the microphone opens while it is talking, it stops
+mid-word and says the line again once the microphone is free. That exists because dictation kept
+picking up the voice.
 
-## Quiet mode, for an office
-
-```
-/koovi quiet
-```
-
-No sound at all. Instead a coloured frame blinks along the edges of every screen for five
-seconds, with the session named in a corner: "Checkout  done", "Payments  needs an answer". Clicks
-pass straight through it. Same ladder as the voice: one flash, one reminder flash, then gone.
-
-`/koovi auto` picks for you: the voice when headphones or AirPods are the output, the light when
-sound would come out of the speakers.
-
-The light is a small helper program in `light/`, shipped prebuilt for both kinds of Mac. It
-starts when needed and quits when nothing is waiting. If the shipped copy cannot run, Koovi
-builds a fresh one with Xcode's command line tools.
-
-## Windows and Linux
-
-The rules are the same everywhere. What changes is how the machine is asked to do things:
+## Platform support
 
 | | macOS | Windows | Linux |
 | --- | --- | --- | --- |
 | Voice | `say` | built-in speech | `spd-say`, `espeak-ng` or `festival` |
-| Sound | `afplay` | a short beep | `paplay` or `aplay` |
+| Chime | `afplay` | a beep | `paplay` or `aplay` |
 | Which window is in front | yes | yes | needs `xdotool` |
-| Is the microphone in use | yes | yes | yes, through ALSA |
-| Turn music down | yes | not yet | not yet |
-| Screen light | yes | yes, a first draft | not yet, the voice is used |
-| Headphones for auto mode | yes | cannot tell, so it talks | cannot tell, so it talks |
+| Microphone in use | yes | yes | yes, via ALSA |
+| Music turned down | yes | no | no |
+| Screen light | yes | first draft | no, the voice is used |
+| Headphones, for `auto` | yes | cannot tell, so it talks | cannot tell, so it talks |
 
-On Linux, install a speech program first: `sudo apt install speech-dispatcher`. Run
-`/koovi doctor` on any machine and it says exactly what is missing.
+On Linux install a speech program first: `sudo apt install speech-dispatcher`. Run `koovi doctor`
+anywhere and it lists what is missing.
 
-## Music and the microphone
+## What it can see and do
 
-While Koovi talks it turns Apple Music, Spotify and browser music tabs down to 20 percent, then
-puts them back. Browser tabs need a one-time setting: in Brave or Chrome, View > Developer >
-Allow JavaScript from Apple Events. In Safari, Develop > Allow JavaScript from Apple Events.
+- Reads the end of the current session's transcript to count tools and find the last question.
+- Runs `say`, `afplay` and AppleScript locally. The AppleScript sets the volume of music apps and,
+  if you turn on the setting above, of browser tabs.
+- Starts a background process to speak, and the light helper when the light is on.
+- Writes only to `~/.koovi`: your settings, session state, and the decision log.
+- Has no network code. Nothing leaves your machine.
+- Never replies to the coding tool, never blocks a turn, never touches your files.
 
-If any app is using the microphone, for dictation or a call, Koovi waits. If the microphone
-opens while it is already talking, it stops mid-word and says the line again once you are done.
+`koovi log` shows every decision it has made and the reason for it.
 
-## What Koovi can see and do
-
-Worth knowing before you install anything that runs on every turn:
-
-- It reads the tail of the current session's transcript file to count tool uses and find the last
-  question. Nothing is sent anywhere. There is no network code in Koovi at all.
-- It runs `say`, `afplay` and AppleScript locally. The AppleScript reaches into music apps and,
-  if you switch on the setting above, into browser tabs to set their volume.
-- It starts a small background process to speak, and the screen light helper when the light is on.
-- It writes to `~/.koovi` only: your settings, the session state, and the diary of decisions.
-- It never talks back to Claude Code, never blocks a turn, and never touches your code.
-
-Read `/koovi log` any time to see every decision it made and why.
-
-## Remove it
+## Removing it
 
 ```
 /plugin uninstall koovi
 ```
 
-or, for the script install, `python3 install.py --uninstall`. Then delete `~/.koovi` if you want
-your settings and diary gone too.
+or `python3 install.py --uninstall` for the script install. Delete `~/.koovi` to remove your
+settings and log too.
 
-## Help wanted
+## Working on it
 
-- Trying Koovi on Windows and on Linux, and telling us what broke. The code is there; the
-  testing is not.
-- Turning music down on Windows and Linux.
-- Better voices than the built-in ones.
-- Cursor writes no transcript Koovi can read yet, so it cannot say what a Cursor session asked.
-  Everything else works there.
+```
+python3 -m unittest discover -s tests
+```
 
-Tests: `python3 -m unittest discover -s tests`. They never make a sound and never touch `~/.koovi`.
+36 tests, no sound, nothing touched outside a temporary folder. They cover the settings reader,
+the transcript readers for Claude Code and Codex, every decision rule, the platform commands and
+the plugin files. `koovi.py` is one file on purpose.
 
-MIT licensed. Issues and pull requests welcome.
+To try a change as a plugin, bump the version in `.claude-plugin/plugin.json` and
+`marketplace.json`, then reinstall. Plugins are pinned to their version, so an unchanged number
+keeps the old copy running.
+
+Help most wanted: someone with a Windows or Linux machine to say what breaks, turning music down
+on those systems, and better voices than the built-in ones.
+
+## Licence
+
+MIT.

@@ -63,6 +63,14 @@ class Sandbox(unittest.TestCase):
 
 
 class ConfigReader(Sandbox):
+    def test_the_example_matches_the_built_in_defaults(self):
+        example = koovi.parse_yaml((ROOT / "config.example.yaml").read_text())
+        for key, value in koovi.DEFAULTS.items():
+            if key in example and not isinstance(value, (dict, list)):
+                self.assertEqual(example[key], value, f"config.example.yaml and DEFAULTS disagree on {key}")
+        for key, value in koovi.DEFAULTS["timing"].items():
+            self.assertEqual(example["timing"][key], value, f"they disagree on timing.{key}")
+
     def test_reads_the_example_config(self):
         cfg = koovi.parse_yaml((ROOT / "config.example.yaml").read_text())
         self.assertEqual(cfg["assistant"], "Koovi")

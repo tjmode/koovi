@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2
+
+- Rewritten README: full reference tables for the commands, the rules and every setting.
+- The built-in default for `timing.min_task_seconds` was 30 while the shipped settings said 5.
+  Both are 5 now, and a test keeps them in step.
+
 ## 0.9.1
 
 - The doctor no longer reports a problem when Koovi is installed as a Claude Code plugin.
