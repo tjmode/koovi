@@ -1,6 +1,6 @@
 ---
 name: koovi
-description: Koovi: anything not covered by the other /koovi: commands, such as auto, light, voices, mic or version.
+description: Run any other Koovi command, such as auto, light, voices, mic or version.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

@@ -415,6 +415,23 @@ class Packaging(unittest.TestCase):
         self.assertEqual(set(entry) - allowed, set(),
                          "older Claude Code versions reject unknown keys in a marketplace entry")
 
+    def test_every_command_file_has_a_readable_header(self):
+        """A second colon in a description makes the header invalid, and Claude Code then skips
+        the command silently. That shipped once; it does not ship again."""
+        files = sorted((ROOT / "skills").glob("*/SKILL.md"))
+        self.assertGreaterEqual(len(files), 10)
+        for path in files:
+            _, header, body = path.read_text().split("---", 2)
+            fields = {}
+            for line in header.strip().splitlines():
+                key, _, value = line.partition(":")
+                fields[key.strip()] = value.strip()
+                if not (value.startswith('"') or value.startswith("'")):
+                    self.assertNotIn(": ", value, f"{path.name} header line needs quoting: {line}")
+            self.assertEqual(fields.get("name"), path.parent.name, f"{path} name must match its folder")
+            self.assertTrue(fields.get("description"), f"{path} needs a description")
+            self.assertIn("${CLAUDE_PLUGIN_ROOT}/koovi.sh", body)
+
     def test_the_manifest_does_not_name_the_hooks_file(self):
         manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())
         self.assertTrue((ROOT / "hooks" / "hooks.json").exists())

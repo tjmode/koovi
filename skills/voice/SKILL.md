@@ -1,6 +1,6 @@
 ---
 name: voice
-description: Koovi: start talking again, or switch to a named voice such as /koovi:voice Daniel.
+description: Make Koovi talk again, or switch to a named voice such as Daniel.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

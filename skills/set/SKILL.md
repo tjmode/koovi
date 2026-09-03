@@ -1,6 +1,6 @@
 ---
 name: set
-description: Koovi: change a setting, for example /koovi:set rate 190 or /koovi:set user boss.
+description: Change a Koovi setting, for example rate 190 or user boss or light.corner bottom-left.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

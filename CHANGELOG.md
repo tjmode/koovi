@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.9
+
+- The nine new commands from 0.9.8 never appeared. Their descriptions read "Koovi: ..." and that
+  second colon makes the file's header invalid, so Claude Code skipped every one of them. Only
+  the old catch-all survived, which is why the picker still showed a single command.
+
 ## 0.9.8
 
 - One command per job: `/koovi:status`, `/koovi:doctor`, `/koovi:log`, `/koovi:quiet`,

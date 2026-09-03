@@ -1,6 +1,6 @@
 ---
 name: doctor
-description: Koovi: check every part of the setup and say what is missing.
+description: Check every part of the Koovi setup and say what is missing.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

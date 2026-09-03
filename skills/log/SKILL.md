@@ -1,6 +1,6 @@
 ---
 name: log
-description: Koovi: the recent decisions and why each was made. Takes a number of lines, default 30.
+description: Show Koovi's recent decisions and why each one was made. Takes a number of lines, 30 by default.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

@@ -1,6 +1,6 @@
 ---
 name: unmute
-description: Koovi: let a muted project speak again. No argument means the project you are in.
+description: Let a muted project speak again. With no argument it means the project you are in.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

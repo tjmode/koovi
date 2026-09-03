@@ -1,6 +1,6 @@
 ---
 name: mute
-description: Koovi: silence one project. No argument means the project you are in. Undo with /koovi:unmute.
+description: Silence Koovi for one project. With no argument it means the project you are in.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---

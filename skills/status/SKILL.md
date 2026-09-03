@@ -1,6 +1,6 @@
 ---
 name: status
-description: Koovi: how it is set right now, what is on the screen light, muted projects, and the last few decisions.
+description: Show how Koovi is set right now, what is on the screen light, which projects are muted, and the last few decisions.
 disable-model-invocation: true
 allowed-tools: Bash(${CLAUDE_PLUGIN_ROOT}/koovi.sh *)
 ---
