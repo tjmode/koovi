@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.4
+
+- Dropped `displayName` from the marketplace entry. Older Claude Code versions reject unknown
+  keys there, so `plugin marketplace add tjmode/koovi` failed with "Invalid schema". The name
+  still comes from plugin.json, which every version reads.
+
 ## 0.9.3
 
 - A spoken line that does not use your name: "Koovi reporting. Checkout is done."

@@ -379,6 +379,13 @@ class Packaging(unittest.TestCase):
     def test_the_readme_badge_shows_the_current_version(self):
         self.assertIn(f"version-{koovi.KOOVI_VERSION}-", (ROOT / "README.md").read_text())
 
+    def test_the_marketplace_entry_stays_conservative(self):
+        entry = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text())["plugins"][0]
+        allowed = {"name", "source", "version", "description", "author", "homepage",
+                   "repository", "license", "keywords", "category"}
+        self.assertEqual(set(entry) - allowed, set(),
+                         "older Claude Code versions reject unknown keys in a marketplace entry")
+
     def test_the_manifest_does_not_name_the_hooks_file(self):
         manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())
         self.assertTrue((ROOT / "hooks" / "hooks.json").exists())
