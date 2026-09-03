@@ -17,12 +17,6 @@ window while three others run.
 One line, one reminder if you do not reply, then silence. Your next message in that window is the
 answer.
 
-> [!TIP]
-> Nothing about the voice is fixed. `koovi set assistant Jarvis` changes what it calls itself,
-> `koovi set user bro` changes what it calls you, and `koovi voice Daniel` changes the voice
-> itself. The sentences are a plain list in your settings file, so you can rewrite them or add
-> your own.
-
 ## Install
 
 **Claude Code** (one line at a time)
@@ -34,35 +28,23 @@ answer.
 /plugin install koovi@koovi
 ```
 
-`/plugin` needs an interactive session. If it says it is not available here, such as in a remote
-or web session, run the same thing from a terminal:
-
-```sh
-claude plugin marketplace add tjmode/koovi
-claude plugin install koovi@koovi
-```
-
-**Codex, Cursor, or without the plugin system**
+**Codex, Cursor, or a terminal**
 
 ```sh
 git clone https://github.com/tjmode/koovi.git
 cd koovi && python3 install.py
 ```
 
-Sets up every tool it finds. Add `--claude`, `--codex` or `--cursor` for one, `--uninstall` to
-remove. Needs Python 3.8 or newer, nothing else.
-
-**Updating** · `/plugin` in Claude Code shows when a new version is out, or run
-`claude plugin update koovi` and restart. For the clone, `git pull` in the folder. Your settings
-in `~/.koovi` are never touched by either.
+Needs Python 3.8 or newer, nothing else. Update with `claude plugin update koovi`, or `git pull`,
+then restart. Your settings survive.
 
 > [!IMPORTANT]
-> Koovi speaks on the machine where the session runs. Install it on the computer you sit at. In a
-> cloud or web session it runs on a server with no speakers, so you would hear nothing.
+> Koovi speaks on the machine that runs the session. Install it on the computer you sit at, not in
+> a cloud or web session, where nobody can hear it.
 
 ## Commands
 
-Type `/koovi:` in Claude Code and they all appear.
+Type `/koovi:` in Claude Code and they all appear. The same words work after `./koovi.sh`.
 
 | Command | What it does |
 | :--- | :--- |
@@ -76,64 +58,43 @@ Type `/koovi:` in Claude Code and they all appear.
 | `/koovi:set` | change one setting |
 | `/koovi:koovi` | anything else: `auto`, `light`, `voices`, `mic`, `version` |
 
-Most take an argument, and the same words work in a terminal after `./koovi.sh`:
+Nothing about the voice is fixed:
 
 ```sh
-/koovi:log 50
-/koovi:voice Daniel
-/koovi:set rate 190
-/koovi:set light.corner bottom-left
-/koovi:test asking Payments "Postgres or SQLite?"
+/koovi:set assistant Jarvis      # what it calls itself
+/koovi:set user boss             # what it calls you
+/koovi:voice Daniel              # which voice speaks
+/koovi:set rate 190              # how fast
 ```
 
 ## When it stays quiet
 
 - Turns under 5 seconds, so your "ok" replies never trigger it.
 - Replies that ran no tools, unless they took over two minutes.
-- The same window twice inside 20 seconds.
-- Projects you muted, and your own quiet hours.
+- The same window twice inside 20 seconds, muted projects, and your quiet hours.
 - After one reminder. Finished work is announced once and never nagged.
+- While your microphone is in use. It even stops mid-word if you start dictating.
 
-Questions and permission requests are always spoken, and it says what was asked. Two windows in
-the same folder are told apart by what you asked for: *"Checkout, the fix the login bug session"*.
+Questions and permission requests are always spoken, and it says what was asked.
 
 > [!TIP]
-> Working in an office? `/koovi:quiet` swaps the voice for a coloured frame that flashes
-> around your screens for five seconds with the session named in the corner. `/koovi:koovi auto`
-> picks by whether headphones are plugged in.
+> In an office? `/koovi:quiet` swaps the voice for a coloured frame that flashes around your
+> screens for five seconds with the session named in the corner. `/koovi:koovi auto` picks by
+> whether headphones are plugged in.
 
-## Settings
+## Good to know
 
-One file, `~/.koovi/config.yaml`, written from [`config.example.yaml`](config.example.yaml) the
-first time it runs. Every setting is explained next to its value there: the voice, what it calls
-you, the phrases it can say, per-project names, and every timing rule. Edits apply to the next
-announcement.
+- Everything is in `~/.koovi/config.yaml`, explained line by line inside
+  [`config.example.yaml`](config.example.yaml): the sentences it says, per-project names, timings.
+- It reads the end of the session transcript, writes only to `~/.koovi`, and has no network code.
+  Nothing leaves your machine. `/koovi:log` shows every decision it ever made.
+- macOS is in daily use. Windows and Linux are written but untested, and `/koovi:doctor` says what
+  a machine is missing. Reports from either are the most useful thing you can send.
+- Remove it with `/plugin uninstall koovi`, or `python3 install.py --uninstall`.
 
-> [!NOTE]
-> To turn music down in browser tabs, switch on **View > Developer > Allow JavaScript from Apple
-> Events** in Brave or Chrome, or **Develop > Allow JavaScript from Apple Events** in Safari.
-> Apple Music and Spotify need nothing.
-
-## What it can see
-
-Koovi reads the end of the current session's transcript to count tools and find the last question,
-writes only to `~/.koovi`, and has no network code at all. It never replies to the coding tool,
-never blocks a turn, and never touches your files. `koovi log` shows every decision it has made.
-
-It also stays silent while your microphone is in use, and stops mid-word if the microphone opens
-while it is talking.
-
-## Platforms
-
-macOS is in daily use. Windows and Linux are written but have not been tried on a real machine.
-`koovi doctor` says what a given machine is missing. Reports from either are the most useful thing
-you can send.
-
-## Removing it
-
-`/plugin uninstall koovi`, or `python3 install.py --uninstall`. Delete `~/.koovi` to drop your
-settings and log as well.
+Something unclear or broken? Run `/koovi:doctor`, then
+[open an issue](https://github.com/tjmode/koovi/issues).
 
 ---
 
-Tests: `python3 -m unittest discover -s tests`. MIT licensed. [Changelog](CHANGELOG.md).
+MIT licensed · [Changelog](CHANGELOG.md) · tests: `python3 -m unittest discover -s tests`
