@@ -1,0 +1,109 @@
+# Koovi settings. Edit this file like a note. Save it, and the next announcement uses it.
+# Your copy lives at ~/.koovi/config.yaml. Koovi creates it from this example the first time you run a command.
+# Blanks you can use inside phrase lines: {assistant} {user} {project} {question}
+# {question} is the question Claude asked. Lines with it are used only when Koovi could read one.
+
+assistant: Koovi         # what the voice calls itself. Rename it to anything you like.
+user: boss               # what it calls you
+voice: Samantha          # a Mac voice. See the list with:  koovi.sh voices
+rate: 175                # speaking speed, words per minute. 150 slower, 200 faster.
+
+# true:  when that project's window is already in front, play a soft sound instead of talking.
+# false: always talk, even if you are on that window (you might be looking at your phone).
+focus_check: false
+# Permission requests are always spoken, even if you are on that window. They block the session.
+permission_always_speak: true
+# When Claude ends its reply with a question for you, always speak, even after a short turn.
+always_announce_questions: true
+# true: stay quiet when a turn ends while background work is still running, and report when that
+# work wakes the session. Only worth it if your background jobs finish quickly. Long-running ones
+# (watchers, monitors, agents that live for hours) would silence real finishes, so this is off.
+wait_for_background_tasks: false
+
+# How Koovi gets your attention.
+#   voice  talk (the normal way)
+#   quiet  never make a sound. Show the screen light instead (office, shared room).
+#   auto   talk when headphones or AirPods are on, screen light when the sound would come out of the speakers.
+mode: voice
+
+# The screen light: a blinking coloured frame on every screen for a few seconds, with the session named in a corner.
+# Clicks pass through it. Same ladder as the voice, and that rule does not change:
+# one flash, one reminder flash if you still have not replied, then nothing more.
+light:
+  enabled: true
+  when: instead_of_voice     # instead_of_voice: only when the voice is not used.  always: together with the voice.
+  seconds: 5                 # how long one flash lasts
+  corner: top-right          # top-right, top-left, bottom-right, bottom-left
+  pulse: true                # blink
+  colors: {done: "#ff3b30", also_done: "#ff3b30", asking: "#ff9f0a", permission: "#ff9f0a", reminder: "#ff9f0a"}
+  labels: {done: "done", also_done: "done", asking: "needs an answer", permission: "wants permission", reminder: "still waiting"}
+
+# While Koovi talks, turn music down to this volume, then put it back.
+# Works for Apple Music, Spotify, and browser tabs on the sites below.
+# Browser tabs need a one-time setting: Brave/Chrome: View > Developer > Allow JavaScript from Apple Events.
+# Safari: Develop > Allow JavaScript from Apple Events.
+music_duck: true
+music_duck_percent: 20
+browser_music_sites: [youtube.com, soundcloud.com, open.spotify.com, music.apple.com]
+
+# Never talk while the microphone is in use (dictation, calls). Koovi waits, then speaks.
+# If the microphone opens mid-sentence, Koovi stops at once and says the line again when it closes.
+wait_for_mic: true
+mic_wait_max_seconds: 120   # after this long, give up on the voice and just play a sound
+mic_settle_seconds: 1.5     # small pause after the mic closes, so dictation finishes its last words
+
+# No voice between these times, sound only. Leave both empty to disable.
+quiet_hours:
+  start:            # example  "23:00"
+  end:              # example  "08:00"
+
+timing:
+  min_task_seconds: 5           # turns shorter than this are not announced (your "OK" replies)
+  chat_needs_seconds: 120       # a reply that ran no tools is announced only if it took this long
+  reminder_after_seconds: 120   # if you have not replied by then, remind once
+  reminders: 1                  # how many reminders. 0 to turn off.
+  debounce_seconds: 20          # never speak twice for the same window within this many seconds
+  also_done_window_seconds: 30  # a second "done" within this window uses the shorter "also done" line
+# Which announcements get a reminder. Only ones where the session is stuck waiting on you.
+# A finished task is said once and never nagged. Add "done" here if you want reminders for it too.
+remind_for: [asking, permission]
+
+# Spoken names for your project folders, and which ones to keep silent.
+# The key is the folder name. Without an entry, Koovi says the folder name with dashes read as spaces.
+# "koovi.sh mute" and "koovi.sh unmute" edit this block for you.
+projects:
+  # my-app:            My app
+  # my-app-backend:    { say: "My app backend" }
+  # noisy-experiment:  { mute: true }
+
+phrases:
+  done:
+    - "Hey {user}, {project} is done."
+    - "{assistant} reporting, {user}. {project} is done."
+    - "{user}, {project} has finished. Take a look when you're free."
+    - "Mission complete on {project}, {user}."
+    - "{project} is ready for your eyes, {user}."
+    - "Good news, {user}. {project} just wrapped up."
+  also_done:
+    - "{project} is also done, {user}."
+    - "And {project} has finished too."
+    - "Add {project} to the done list, {user}."
+  asking:
+    - "{user}, {project} is asking: {question}"
+    - "{project} wants to know: {question}"
+    - "Hey {user}, {project} has a question. {question}"
+    - "Hey {user}, {project} is asking you something."
+    - "{user}, {project} needs a decision from you."
+    - "{assistant} here. {project} is waiting on your answer."
+    - "{project} has a question for you, {user}."
+  permission:
+    - "Hey {user}, {project} needs a yes from you."
+    - "{user}, {project} wants permission to proceed."
+    - "{project} is asking for your approval, {user}."
+    - "Hold on, {user}. {project} needs a yes or no."
+  reminder:
+    - "{user}, {project} is still waiting on this: {question}"
+    - "Hey {user}, {project} is still waiting on you."
+    - "{user}, {project} is still waiting."
+    - "Still no word on {project}, {user}."
+    - "Gentle reminder, {user}. {project} is on hold for you."
