@@ -376,6 +376,9 @@ class Packaging(unittest.TestCase):
         self.assertEqual(market["plugins"][0]["version"], koovi.KOOVI_VERSION)
         self.assertIn(f"## {koovi.KOOVI_VERSION}", changelog)
 
+    def test_the_readme_badge_shows_the_current_version(self):
+        self.assertIn(f"version-{koovi.KOOVI_VERSION}-", (ROOT / "README.md").read_text())
+
     def test_the_manifest_does_not_name_the_hooks_file(self):
         manifest = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())
         self.assertTrue((ROOT / "hooks" / "hooks.json").exists())
