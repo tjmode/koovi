@@ -34,7 +34,14 @@ answer.
 /plugin install koovi@koovi
 ```
 
-**Codex, Cursor, or a terminal**
+Or the same two from a terminal, which also works where `/plugin` is not available:
+
+```sh
+claude plugin marketplace add tjmode/koovi
+claude plugin install koovi@koovi
+```
+
+**Codex, Cursor, or without the plugin system**
 
 ```sh
 git clone https://github.com/tjmode/koovi.git
