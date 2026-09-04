@@ -41,8 +41,13 @@ git clone https://github.com/tjmode/koovi.git
 cd koovi && python3 install.py
 ```
 
-Needs Python 3.8 or newer, nothing else. Update with `claude plugin update koovi`, or `git pull`,
-then restart. Your settings survive.
+Needs Python 3.8 or newer, nothing else.
+
+**Update** (then restart Claude Code; your settings survive)
+
+```sh
+claude plugin update koovi
+```
 
 > [!IMPORTANT]
 > Koovi speaks on the machine that runs the session. Install it on the computer you sit at, not in
