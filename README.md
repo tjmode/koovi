@@ -1,3 +1,5 @@
+<img src="assets/koovi-logo-256.png" alt="" width="88" align="left">
+
 # Koovi
 
 [![tests](https://github.com/tjmode/koovi/actions/workflows/ci.yml/badge.svg)](https://github.com/tjmode/koovi/actions/workflows/ci.yml)
@@ -8,6 +10,8 @@
 
 **Koovi tells you which of your coding sessions just finished or needs an answer.** Work in one
 window while three others run.
+
+<br clear="left">
 
 ```
 "Koovi reporting. Checkout is done."
