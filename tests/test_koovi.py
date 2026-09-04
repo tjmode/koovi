@@ -405,6 +405,13 @@ class Packaging(unittest.TestCase):
         self.assertEqual(market["plugins"][0]["version"], koovi.KOOVI_VERSION)
         self.assertIn(f"## {koovi.KOOVI_VERSION}", changelog)
 
+    def test_the_readme_links_point_somewhere_real(self):
+        import re
+        readme = (ROOT / "README.md").read_text()
+        for target in re.findall(r"\]\((?!http)([^)#]+)\)", readme):
+            self.assertTrue((ROOT / target).exists(), f"README links to {target}, which is not in the repo")
+        self.assertIn("discord.gg/", readme)
+
     def test_the_readme_badge_shows_the_current_version(self):
         self.assertIn(f"version-{koovi.KOOVI_VERSION}-", (ROOT / "README.md").read_text())
 

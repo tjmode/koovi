@@ -92,8 +92,11 @@ Questions and permission requests are always spoken, and it says what was asked.
   a machine is missing. Reports from either are the most useful thing you can send.
 - Remove it with `/plugin uninstall koovi`, or `python3 install.py --uninstall`.
 
-Something unclear or broken? Run `/koovi:doctor`, then
-[open an issue](https://github.com/tjmode/koovi/issues).
+## Talk to me
+
+Questions, ideas, or just to say it worked: [Discord](https://discord.gg/qRwvCHMV3). For anything
+broken, run `/koovi:doctor` and [open an issue](https://github.com/tjmode/koovi/issues) with what
+it said.
 
 ---
 
