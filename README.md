@@ -94,7 +94,7 @@ Questions and permission requests are always spoken, and it says what was asked.
 
 ## Talk to me
 
-Questions, ideas, or just to say it worked: [Discord](https://discord.gg/qRwvCHMV3). For anything
+Questions, ideas, or just to say it worked: [Discord](https://discord.gg/YJfCBZ3sex). For anything
 broken, run `/koovi:doctor` and [open an issue](https://github.com/tjmode/koovi/issues) with what
 it said.
 
