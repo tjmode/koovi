@@ -67,6 +67,7 @@ Type `/koovi:` in Claude Code and they all appear. The same words work after `./
 | Command | What it does |
 | :--- | :--- |
 | `/koovi:status` | how it is set, and the last few decisions |
+| `/koovi:dashboard` | activity and interruption summary across your sessions |
 | `/koovi:log` | why it spoke, or why it stayed quiet |
 | `/koovi:doctor` | check every part, and name what is missing |
 | `/koovi:quiet` | stop talking, flash the screen instead |
@@ -74,7 +75,7 @@ Type `/koovi:` in Claude Code and they all appear. The same words work after `./
 | `/koovi:mute` | silence this project, `/koovi:unmute` to undo |
 | `/koovi:test` | hear a sample line |
 | `/koovi:set` | change one setting |
-| `/koovi:koovi` | anything else: `auto`, `light`, `voices`, `mic`, `version` |
+| `/koovi:koovi` | anything else: `dashboard`, `notify`, `auto`, `light`, `voices`, `mic`, `version` |
 
 Nothing about the voice is fixed:
 

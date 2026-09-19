@@ -42,6 +42,12 @@ light:
   colors: {done: "#ff3b30", also_done: "#ff3b30", asking: "#ff9f0a", permission: "#ff9f0a", reminder: "#ff9f0a"}
   labels: {done: "done", also_done: "done", asking: "needs an answer", permission: "wants permission", reminder: "still waiting"}
 
+# Native system notifications (desktop alerts/banners).
+notify:
+  enabled: true
+  when: always               # always: with speech/light.  instead_of_voice: only when voice is off.
+  show_question: true        # include question snippet in notification body
+
 # While Koovi talks, turn music down to this volume, then put it back.
 # Works for Apple Music, Spotify, and browser tabs on the sites below.
 # Browser tabs need a one-time setting: Brave/Chrome: View > Developer > Allow JavaScript from Apple Events.

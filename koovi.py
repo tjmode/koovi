@@ -28,6 +28,8 @@ Commands for you (the /koovi:koovi command in Claude Code runs these too):
   koovi.py light          what the screen light shows right now (and the current mode)
   koovi.py light test     show a demo flash
   koovi.py light off      clear the screen light
+  koovi.py dashboard [N]  show session run summary and interruptions (last N days, default 7)
+  koovi.py notify [test]  show notification status or send a demo notification
 """
 
 import contextlib
@@ -91,6 +93,11 @@ DEFAULTS = {
                    "reminder": "#ff9f0a"},
         "labels": {"done": "done", "also_done": "done", "asking": "needs an answer", "permission": "wants permission",
                    "reminder": "still waiting"},
+    },
+    "notify": {
+        "enabled": True,
+        "when": "always",  # always | instead_of_voice
+        "show_question": True,
     },
     "music_duck": True,
     "music_duck_percent": 20,
@@ -1002,6 +1009,125 @@ def light_wanted(cfg, voice_ok):
     return str(L.get("when", "instead_of_voice")) == "always" or not voice_ok
 
 
+def notify_wanted(cfg, voice_ok):
+    """Should a system notification (toast / banner) be shown?"""
+    N = cfg.get("notify") or {}
+    if not N.get("enabled", True):
+        return False
+    return str(N.get("when", "always")) == "always" or not voice_ok
+
+
+def notification_command(title, text):
+    """How to show a desktop toast notification on this machine: command or None."""
+    safe_title = str(title).replace('"', '\\"')
+    safe_text = str(text).replace('"', '\\"')
+    if OS == MAC:
+        script = f'display notification "{safe_text}" with title "{safe_title}"'
+        return ["osascript", "-e", script]
+    if OS == WINDOWS:
+        # BalloonTip via Windows Forms/NotifyIcon: standard, reliable without external modules
+        ps_notify = (
+            "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms');"
+            "$n = New-Object System.Windows.Forms.NotifyIcon;"
+            "$n.Icon = [System.Drawing.SystemIcons]::Information;"
+            "$n.Visible = $true;"
+            f"$n.ShowBalloonTip(10000, '{safe_title}', '{safe_text}', [System.Windows.Forms.ToolTipIcon]::Info);"
+            "Start-Sleep -Milliseconds 200;$n.Dispose()"
+        )
+        return PS + [ps_notify]
+    if shutil.which("notify-send"):
+        return ["notify-send", str(title), str(text)]
+    return None
+
+
+def send_notification(title, text):
+    """Display a system notification in the background without blocking."""
+    command = notification_command(title, text)
+    if command:
+        try:
+            subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+            return True
+        except Exception as exc:
+            log("notify", "-", f"ERROR sending notification: {exc}")
+    return False
+
+
+def cmd_notify(*args):
+    cfg = load_config()
+    N = cfg.get("notify") or {}
+    enabled = N.get("enabled", True)
+    when = N.get("when", "always")
+    what = (args[0] if args else "status").lower()
+    if what == "test":
+        title = f"{cfg.get('assistant', 'Koovi')} Test"
+        text = "Notifications are working!"
+        ok = send_notification(title, text)
+        print(f"sent test notification ({'success' if ok else 'failed or no notification tool found'})")
+        return 0 if ok else 1
+    print(f"notifications: {'enabled' if enabled else 'disabled'} (shown: {when})")
+    cmd = notification_command("test", "test")
+    print(f"backend: {cmd[0] if cmd else 'none found on this system'}")
+    return 0
+
+
+def parse_dashboard(log_lines, days=7):
+    """Aggregate per-project runs, completed tasks, questions asked, and durations from log lines."""
+    cutoff = dt.datetime.now() - dt.timedelta(days=days)
+    stats = {}
+    total_events = 0
+    for line in log_lines:
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 4:
+            continue
+        stamp_str, event, proj, decision = parts[0], parts[1], parts[2], "|".join(parts[3:])
+        if proj in ("-", "", "unknown"):
+            continue
+        try:
+            stamp = dt.datetime.strptime(stamp_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        if stamp < cutoff:
+            continue
+        total_events += 1
+        entry = stats.setdefault(proj, {"runs": 0, "done": 0, "asking": 0, "permission": 0, "durations": []})
+        entry["runs"] += 1
+        if "done" in decision.lower() or "also_done" in decision.lower():
+            entry["done"] += 1
+        if "asking" in decision.lower() or "question" in decision.lower():
+            entry["asking"] += 1
+        if "permission" in decision.lower():
+            entry["permission"] += 1
+        m = re.search(r"took=(\d+)s", decision)
+        if m:
+            entry["durations"].append(int(m.group(1)))
+    return stats, total_events
+
+
+def cmd_dashboard(days_arg="7"):
+    try:
+        days = int(days_arg)
+    except ValueError:
+        days = 7
+    try:
+        lines = LOG_FILE.read_text().splitlines()
+    except OSError:
+        lines = []
+    stats, count = parse_dashboard(lines, days=days)
+    print(f"Koovi Dashboard (last {days} days - {count} events logged)")
+    if not stats:
+        print("  No session activity recorded yet.")
+        return 0
+    header = f"{'Project':<20} | {'Runs':>5} | {'Done':>5} | {'Asks':>5} | {'Perms':>5} | {'Avg Took':>10}"
+    print(header)
+    print("-" * len(header))
+    for proj in sorted(stats.keys()):
+        s = stats[proj]
+        avg = f"{round(sum(s['durations']) / len(s['durations']))}s" if s['durations'] else "-"
+        print(f"{proj:<20} | {s['runs']:>5} | {s['done']:>5} | {s['asking']:>5} | {s['permission']:>5} | {avg:>10}")
+    return 0
+
+
 def light_render(cfg, st):
     """Write what the screen light shows right now: each flash until its own end time, most urgent first."""
     L = cfg.get("light") or {}
@@ -1066,7 +1192,16 @@ def light_commands():
 
 
 def intimate(cfg, job, line, kind):
-    """Get your attention the way the job says: screen light, voice, or both."""
+    """Get your attention the way the job says: screen light, voice, notification, or all of them."""
+    if job.get("notify"):
+        proj = job.get("project", "Koovi")
+        q = job.get("question")
+        N = cfg.get("notify") or {}
+        if q and N.get("show_question", True):
+            body = f"{kind.replace('_', ' ').capitalize()}: {q}"
+        else:
+            body = line
+        send_notification(f"{cfg.get('assistant', 'Koovi')} - {proj}", body)
     if job.get("light"):
         with locked_state() as st:
             s = st["sessions"].setdefault(job["session"], {})
@@ -1123,7 +1258,8 @@ def announce(cfg, st, s, sid, event, spoken, folder, kind, now, check_focus, que
         st["last_done_session"] = sid
     job = {"session": sid, "project": spoken, "folder": folder, "kind": kind, "line": line, "held": held,
            "spoken_at": now, "reminders": reminders,
-           "voice": voice_ok, "light": light_wanted(cfg, voice_ok), "question": question}
+           "voice": voice_ok, "light": light_wanted(cfg, voice_ok),
+           "notify": notify_wanted(cfg, voice_ok), "question": question}
     spawn_worker(job)
     if held:
         log(event, spoken, f"HOLD {kind}: you are on that window. Only if you do nothing: {line}", **why)
@@ -1457,6 +1593,11 @@ def cmd_doctor():
         can_build = subprocess.run(["xcrun", "-f", "swiftc"], capture_output=True).returncode == 0
         check("screen light helper" + (f" ({helper})" if helper else " (will be built on first use)"),
               bool(helper) or can_build, "no helper and no Swift compiler; run: xcode-select --install")
+    notify_cmd = notification_command("test", "test")
+    N = cfg.get("notify") or {}
+    check(f"notifications ({'enabled' if N.get('enabled', True) else 'disabled'})" +
+          ("" if notify_cmd else " (no notification tool found; notifications will be skipped)"),
+          bool(notify_cmd) or not N.get("enabled", True), "install notify-send on Linux or check permissions")
     check(f"state folder writable ({STATE_DIR})", os.access(STATE_DIR, os.W_OK))
     print("all good" if ok else "something needs attention (see XX lines)")
     return 0 if ok else 1
@@ -1578,6 +1719,7 @@ def cmd_status():
     cfg = load_config()
     print(f"Koovi {KOOVI_VERSION}  settings: {CONFIG_PATH if CONFIG_PATH.exists() else 'built-in defaults (no settings file yet)'}")
     cmd_light()
+    cmd_notify()
     muted = [k for k, v in (cfg.get("projects") or {}).items() if isinstance(v, dict) and v.get("mute")]
     print("muted projects: " + (", ".join(muted) if muted else "none"))
     print("last decisions:")
@@ -1620,6 +1762,10 @@ def main(argv):
         return cmd_test(*args)
     if cmd == "log":
         return cmd_log(*args)
+    if cmd == "dashboard":
+        return cmd_dashboard(*args)
+    if cmd == "notify":
+        return cmd_notify(*args)
     if cmd == "doctor":
         return cmd_doctor()
     if cmd == "mic":

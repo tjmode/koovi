@@ -474,6 +474,58 @@ class Platforms(Sandbox):
         self.assertEqual(list(koovi.light_commands()), [])
         self.assertIn("needs macOS or Windows", self.diary())
 
+    def test_the_notification_command_per_machine(self):
+        self.use("mac")
+        cmd = koovi.notification_command("Title", "Message")
+        self.assertEqual(cmd[0], "osascript")
+        self.assertIn("display notification", cmd[2])
+
+        self.use("windows")
+        cmd = koovi.notification_command("Title", "Message")
+        self.assertEqual(cmd[0], "powershell")
+        self.assertIn("ShowBalloonTip", cmd[-1])
+
+        self.use("linux", has=("notify-send",))
+        cmd = koovi.notification_command("Title", "Message")
+        self.assertEqual(cmd[0], "notify-send")
+
+        self.use("linux")
+        cmd = koovi.notification_command("Title", "Message")
+        self.assertIsNone(cmd)
+
+    def test_notify_wanted(self):
+        self.cfg["notify"] = {"enabled": True, "when": "always"}
+        self.assertTrue(koovi.notify_wanted(self.cfg, voice_ok=True))
+        self.assertTrue(koovi.notify_wanted(self.cfg, voice_ok=False))
+
+        self.cfg["notify"] = {"enabled": True, "when": "instead_of_voice"}
+        self.assertFalse(koovi.notify_wanted(self.cfg, voice_ok=True))
+        self.assertTrue(koovi.notify_wanted(self.cfg, voice_ok=False))
+
+        self.cfg["notify"] = {"enabled": False}
+        self.assertFalse(koovi.notify_wanted(self.cfg, voice_ok=False))
+
+    def test_parse_dashboard(self):
+        sample_logs = [
+            "2026-09-19 12:00:00 | stop         | payments         | SPEAK done: Payments is done took=15s tools=2",
+            "2026-09-19 12:10:00 | stop         | payments         | SPEAK asking: Payments asks: Postgres or SQLite? took=8s tools=1",
+            "2026-09-19 12:20:00 | permission   | checkout         | SPEAK permission: checkout needs a yes",
+            "2026-09-19 12:30:00 | stop         | checkout         | SPEAK done: checkout is done took=35s tools=4",
+            "2026-01-01 12:00:00 | stop         | old_project      | SPEAK done: old is done took=20s tools=1",  # outside 7 days
+        ]
+        stats, total = koovi.parse_dashboard(sample_logs, days=7)
+        self.assertEqual(total, 4)
+        self.assertIn("payments", stats)
+        self.assertIn("checkout", stats)
+        self.assertNotIn("old_project", stats)
+        self.assertEqual(stats["payments"]["runs"], 2)
+        self.assertEqual(stats["payments"]["done"], 1)
+        self.assertEqual(stats["payments"]["asking"], 1)
+        self.assertEqual(stats["checkout"]["permission"], 1)
+        self.assertEqual(stats["checkout"]["done"], 1)
+        self.assertEqual(stats["payments"]["durations"], [15, 8])
+
+
 
 class Packaging(unittest.TestCase):
     def test_versions_agree(self):
