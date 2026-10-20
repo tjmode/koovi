@@ -41,6 +41,7 @@ class Sandbox(unittest.TestCase):
         koovi.STATE_FILE = self.tmp / "state.json"
         koovi.LOG_FILE = self.tmp / "koovi.log"
         koovi.LIGHT_FILE = self.tmp / "light.json"
+        koovi.CALL_FILE = self.tmp / "call.json"
         koovi.STATE_LOCK = self.tmp / "state.lock"
         koovi.SPEECH_LOCK = self.tmp / "speech.lock"
         self.jobs, self.detached = [], []
@@ -231,6 +232,42 @@ class Decisions(Sandbox):
         self.stop("s1", {"transcript_path": str(path), "background_tasks": [{"id": "t", "type": "shell", "status": "running"}]}, last_prompt=time.time() - 40)
         self.assertIn("waiting on 1 background task", self.diary())
         self.assertEqual(self.jobs, [])
+
+    def test_research_agents_hold_the_done_until_they_finish(self):
+        path = transcript(self.tmp / "t.jsonl", tool_uses=2)
+        agents = [{"id": "a", "type": "subagent", "status": "running", "agent_type": "general-purpose"},
+                  {"id": "b", "type": "shell", "status": "running"}]
+        self.stop("s1", {"transcript_path": str(path), "background_tasks": agents}, last_prompt=time.time() - 40)
+        self.assertEqual(self.jobs, [], "a turn that is waiting on research is not done")
+        self.assertIn("1 agent(s) still working", self.diary())
+        # an agent wakes the session, and Claude goes straight back to waiting on the next one
+        self.stop("s1", {"transcript_path": str(path), "background_tasks": agents[:1]}, last_wake=time.time() - 3)
+        self.assertEqual(self.jobs, [])
+        # the last agent is back; the wrap-up is short, but it is the end of the whole job
+        self.stop("s1", {"transcript_path": str(path), "background_tasks": agents[1:]}, last_wake=time.time() - 3)
+        self.assertEqual(len(self.jobs), 1)
+        self.assertEqual(self.jobs[0]["kind"], "done")
+        self.assertIn("after_agents=True", self.diary())
+
+    def test_a_question_is_not_held_by_running_agents(self):
+        path = transcript(self.tmp / "t.jsonl", tool_uses=1, assistant_text="Agents are out.\nShip it now or wait?")
+        agents = [{"id": "a", "type": "workflow", "status": "running"}]
+        self.stop("s1", {"transcript_path": str(path), "background_tasks": agents}, last_prompt=time.time() - 40)
+        self.assertEqual(self.jobs[0]["kind"], "asking")
+
+    def test_your_new_prompt_clears_a_stale_agent_wait(self):
+        path = transcript(self.tmp / "t.jsonl", tool_uses=1)
+        self.stop("s1", {"transcript_path": str(path), "background_tasks": [{"id": "a", "type": "subagent", "status": "running"}]},
+                  last_prompt=time.time() - 40)
+        with koovi.locked_state() as st:
+            self.assertTrue(st["sessions"]["s1"].get("awaiting_agents"))
+        self.addCleanup(setattr, koovi, "hook_payload", koovi.hook_payload)
+        koovi.hook_payload = lambda: {"session_id": "s1", "cwd": str(self.tmp / "proj"), "prompt": "now do the next bit"}
+        koovi.cmd_hook("prompt")
+        with koovi.locked_state() as st:
+            self.assertNotIn("awaiting_agents", st["sessions"]["s1"])
+        self.stop("s1", {"transcript_path": str(path)}, last_prompt=time.time() - 2)
+        self.assertEqual(self.jobs, [], "a short reply to your new ask stays quiet as before")
 
     def test_wake_up_notice_is_not_your_reply(self):
         self.assertTrue(koovi.is_system_notice("<task-notification>x</task-notification>"))
@@ -473,6 +510,110 @@ class Platforms(Sandbox):
         self.use("linux")
         self.assertEqual(list(koovi.light_commands()), [])
         self.assertIn("needs macOS or Windows", self.diary())
+
+
+class OnACall(Sandbox):
+    """The microphone is busy, so you are dictating or in a meeting: catch the eye, never the ear."""
+
+    def busy_mic(self):
+        self.addCleanup(setattr, koovi, "mic_in_use", koovi.mic_in_use)
+        koovi.mic_in_use = lambda cfg=None: "us.zoom.xos"
+        self.cfg["wait_for_mic"] = True
+        self.cfg["mic_wait_max_seconds"] = 0  # give up on the voice at once instead of waiting two minutes
+        self.chimed = []
+        koovi.chime = lambda cfg: self.chimed.append(True)
+
+    def job(self, light=False):
+        return {"session": "s1", "project": "Voibe", "folder": "voibe", "kind": "done",
+                "line": "Voibe is done.", "held": False, "spoken_at": time.time(),
+                "reminders": 0, "voice": True, "light": light, "question": ""}
+
+    def test_the_voice_gives_up_while_the_mic_is_busy(self):
+        self.busy_mic()
+        self.assertFalse(koovi.speak(self.cfg, "Voibe is done."))
+
+    def test_a_busy_mic_lights_the_screen_instead_of_making_a_sound(self):
+        self.busy_mic()
+        koovi.intimate(self.cfg, self.job(), "Voibe is done.", "done")
+        self.assertEqual(self.chimed, [])  # no chime in the middle of your meeting
+        self.assertIn("Voibe", koovi.LIGHT_FILE.read_text())
+        self.assertIn("lit the screen instead of speaking", self.diary())
+
+    def test_the_chime_is_the_last_resort_when_the_light_is_off(self):
+        self.busy_mic()
+        self.cfg["light"] = {"enabled": False}
+        koovi.intimate(self.cfg, self.job(), "Voibe is done.", "done")
+        self.assertEqual(self.chimed, [True])
+
+    def test_a_job_already_lit_is_not_lit_twice(self):
+        self.busy_mic()
+        koovi.intimate(self.cfg, self.job(light=True), "Voibe is done.", "done")
+        self.assertEqual(self.chimed, [])
+        self.assertEqual(self.diary().count("lit the screen instead"), 0)
+
+
+class WhoHasTheMic(Sandbox):
+    """On a Mac: ask which app is recording, not which device is running."""
+
+    def setUp(self):
+        super().setUp()
+        for name in ("OS", "_audio_processes", "_audio_inputs", "_audio_prop"):
+            self.addCleanup(setattr, koovi, name, getattr(koovi, name))
+        koovi.OS = koovi.MAC
+        self.procs = []
+        koovi._audio_processes = lambda: self.procs
+
+    def app(self, app, pid, input=False, output=False):
+        self.procs.append({"pid": pid, "app": app, "input": input, "output": output})
+
+    def test_a_call_on_any_microphone_is_busy(self):
+        self.app("us.zoom.xos", 500, input=True, output=True)  # recording from the headset, whatever the default is
+        self.assertEqual(koovi.mic_in_use(self.cfg), "us.zoom.xos")
+
+    def test_playing_sound_is_not_recording(self):
+        self.app("com.apple.Music", 501, output=True)  # music through AirPods
+        self.app("say", 502, output=True)  # Koovi's own voice
+        self.assertEqual(koovi.mic_in_use(self.cfg), "")
+
+    def test_hey_siri_and_ignored_apps_never_count(self):
+        self.app("com.apple.CoreSpeech", 886, input=True)
+        self.app("historicalaudiod", 887, input=True)
+        self.app("ai.krisp.krispMac", 888, input=True)
+        self.cfg["mic_ignore_apps"] = ["ai.krisp.krispMac"]
+        self.assertEqual(koovi.mic_in_use(self.cfg), "")
+
+    def test_dictation_counts(self):
+        self.app("com.voibe.app", 600, input=True)
+        self.assertEqual(koovi.mic_in_use(self.cfg), "com.voibe.app")
+
+    def test_a_muted_web_call_still_counts_while_people_are_talking(self):
+        self.app("com.brave.Browser.helper", 700, input=True, output=True)
+        self.assertTrue(koovi.mic_in_use(self.cfg))
+        self.procs[0]["input"] = False  # you muted Meet; the browser lets go of the mic but still plays the call
+        self.assertIn("com.brave.Browser.helper", koovi.mic_in_use(self.cfg))
+        self.procs[0]["output"] = False  # call over, nothing playing
+        self.assertEqual(koovi.mic_in_use(self.cfg), "")
+
+    def test_the_call_memory_runs_out(self):
+        self.app("us.zoom.xos", 500, output=True)
+        koovi.remember_call({"app": "us.zoom.xos", "pid": 500}, time.time() - self.cfg["call_grace_seconds"] - 1)
+        self.assertEqual(koovi.mic_in_use(self.cfg), "")
+
+    def test_a_non_call_app_recording_is_not_remembered(self):
+        self.app("com.voibe.app", 600, input=True, output=True)
+        koovi.mic_in_use(self.cfg)
+        self.procs[0]["input"] = False
+        self.assertEqual(koovi.mic_in_use(self.cfg), "", "dictation that stopped is over; only calls are remembered")
+
+    def test_older_macs_check_real_devices_only(self):
+        koovi._audio_processes = lambda: None  # no per-app answer before macOS 14.2
+        koovi._audio_inputs = lambda: [73, 97, 120]  # BlackHole (virtual), built-in mic (default), headset
+        tran = {73: koovi._fourcc("virt"), 97: koovi._fourcc("bltn"), 120: koovi._fourcc("usb ")}
+        running = {73: 1, 97: 0, 120: 0}
+        koovi._audio_prop = lambda obj, sel, scope: tran.get(obj) if sel == "tran" else running.get(obj)
+        self.assertEqual(koovi.mic_in_use(self.cfg), "", "a virtual device running all day is not a person")
+        running[120] = 1  # the headset mic, not the default one
+        self.assertEqual(koovi.mic_in_use(self.cfg), "a microphone")
 
 
 class Packaging(unittest.TestCase):

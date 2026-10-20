@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.2
+
+- Never speaks into a call on a headset. Koovi only looked at the Mac's default microphone, so a
+  meeting on AirPods or a headset, where the call app records from the headset mic, looked like a
+  free microphone. It now asks macOS which app is recording, on any microphone, and the diary names
+  it: "microphone in use by us.zoom.xos". Playing sound no longer counts as recording, so music
+  through a headset, or Koovi's own voice, no longer looks like a call. "Hey Siri" is ignored.
+- A muted call still counts. Google Meet and other web calls let go of the microphone when you
+  mute, so a call app seen on the microphone keeps Koovi quiet for `call_grace_seconds` (10
+  minutes) while it is still playing sound.
+- `mic_ignore_apps` for tools that hold the microphone all day, like noise filters.
+- `koovi mic` shows every app using sound right now, the last call seen, and each microphone, to
+  paste when Koovi talked when it should not have.
+- On a Mac older than 14.2, which cannot say which app records, Koovi checks every real
+  microphone and skips virtual ones like BlackHole.
+- When the microphone stays busy for the whole wait, the screen lights instead of a chime.
+- Research agents no longer get you a false "done". Claude ends its turn while subagents and
+  workflows work in the background; Koovi now waits for them and speaks when the job is really
+  finished. Shells and watchers still never hold it back. `wait_for_agents` turns this off.
+
 ## 0.10.1
 
 - Stopped reading your own words back at you. When two live sessions share a folder, Koovi told

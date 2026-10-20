@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/tjmode/koovi/actions/workflows/ci.yml"><img src="https://github.com/tjmode/koovi/actions/workflows/ci.yml/badge.svg" alt="tests"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.10.1-2ea44f" alt="version"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.10.2-2ea44f" alt="version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue" alt="licence"></a>
   <img src="https://img.shields.io/badge/macOS-ready-black?logo=apple&logoColor=white" alt="macOS">
   <img src="https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-supported-6b46c1" alt="Claude Code, Codex, Cursor">

@@ -49,7 +49,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.10.1"
+KOOVI_VERSION = "0.10.2"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -63,6 +63,7 @@ LOG_FILE = STATE_DIR / "koovi.log"
 SPEECH_LOCK = STATE_DIR / "speech.lock"
 STATE_LOCK = STATE_DIR / "state.lock"
 LIGHT_FILE = STATE_DIR / "light.json"             # what the screen light shows right now
+CALL_FILE = STATE_DIR / "call.json"               # the last call app seen using the microphone
 LIGHT_SRC = HERE / "light" / "KooviLight.swift"
 LIGHT_BIN = HERE / "light" / "koovi-light"       # helper shipped with Koovi (macOS)
 LIGHT_BUILT = STATE_DIR / "bin" / "koovi-light"  # helper built here if the shipped one cannot run
@@ -79,6 +80,7 @@ DEFAULTS = {
     "always_announce_questions": True,
     "question_words": 8,  # how much of the question to read out. A line should be over in about three seconds.
     "wait_for_background_tasks": False,  # only for people whose background work always wakes the session quickly
+    "wait_for_agents": True,  # research agents always finish and wake the session, so their pause is not "done"
     "remind_for": ["asking", "permission"],
     "mode": "voice",  # voice | quiet (screen light only) | auto (voice on headphones, light on speakers)
     "light": {
@@ -97,6 +99,8 @@ DEFAULTS = {
     "wait_for_mic": True,
     "mic_wait_max_seconds": 120,
     "mic_settle_seconds": 1.5,
+    "mic_ignore_apps": [],  # apps that keep the mic open all day without a person talking (bundle id or name)
+    "call_grace_seconds": 600,  # a call app seen on the mic still counts this long while it plays sound (muted calls)
     "browser_music_sites": ["youtube.com", "soundcloud.com", "open.spotify.com", "music.apple.com"],
     "quiet_hours": {"start": None, "end": None},
     "timing": {
@@ -735,16 +739,27 @@ def _fourcc(code):
     return int.from_bytes(code.encode(), "big")
 
 
-def _audio_prop(obj, selector, scope):
-    """Read one 32-bit CoreAudio property (object id, four-letter selector, scope). None if unavailable."""
-    try:
+def _core_audio():
+    """CoreAudio and its property address, loaded once. Raises where there is no CoreAudio."""
+    global _CA
+    if _CA is None:
         import ctypes
         import ctypes.util
-        ca = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreAudio"))
 
         class Addr(ctypes.Structure):
             _fields_ = [("sel", ctypes.c_uint32), ("scope", ctypes.c_uint32), ("elem", ctypes.c_uint32)]
 
+        _CA = (ctypes, ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreAudio")), Addr)
+    return _CA
+
+
+_CA = None
+
+
+def _audio_prop(obj, selector, scope):
+    """Read one 32-bit CoreAudio property (object id, four-letter selector, scope). None if unavailable."""
+    try:
+        ctypes, ca, Addr = _core_audio()
         value, size = ctypes.c_uint32(0), ctypes.c_uint32(4)
         addr = Addr(_fourcc(selector), _fourcc(scope), 0)
         if ca.AudioObjectGetPropertyData(obj, ctypes.byref(addr), 0, None, ctypes.byref(size), ctypes.byref(value)) != 0:
@@ -754,30 +769,140 @@ def _audio_prop(obj, selector, scope):
         return None
 
 
+def _audio_list(obj, selector, scope="glob"):
+    """Read a CoreAudio property that is a list of object ids. None if unavailable."""
+    try:
+        ctypes, ca, Addr = _core_audio()
+        size = ctypes.c_uint32(0)
+        addr = Addr(_fourcc(selector), _fourcc(scope), 0)
+        if ca.AudioObjectGetPropertyDataSize(obj, ctypes.byref(addr), 0, None, ctypes.byref(size)) != 0:
+            return None
+        ids = (ctypes.c_uint32 * (size.value // 4))()
+        if ca.AudioObjectGetPropertyData(obj, ctypes.byref(addr), 0, None, ctypes.byref(size), ids) != 0:
+            return None
+        return list(ids)
+    except Exception:
+        return None
+
+
+def _audio_bundle_id(obj):
+    """The bundle id of a CoreAudio process object, or "" (command-line tools and daemons have none)."""
+    try:
+        ctypes, ca, Addr = _core_audio()
+        cf = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreFoundation"))
+        cf.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
+        ref, size = ctypes.c_void_p(), ctypes.c_uint32(ctypes.sizeof(ctypes.c_void_p))
+        addr = Addr(_fourcc("pbid"), _fourcc("glob"), 0)
+        if ca.AudioObjectGetPropertyData(obj, ctypes.byref(addr), 0, None, ctypes.byref(size), ctypes.byref(ref)) != 0 or not ref.value:
+            return ""
+        buf = ctypes.create_string_buffer(512)
+        ok = cf.CFStringGetCString(ref, buf, 512, 0x08000100)  # UTF-8
+        cf.CFRelease(ctypes.c_void_p(ref.value))  # we own it, says the header
+        return buf.value.decode(errors="replace") if ok else ""
+    except Exception:
+        return ""
+
+
+def _process_name(pid):
+    try:
+        import ctypes
+        buf = ctypes.create_string_buffer(256)
+        return buf.value.decode(errors="replace") if ctypes.CDLL(None).proc_name(int(pid), buf, 256) > 0 else ""
+    except Exception:
+        return ""
+
+
+def _audio_inputs():
+    """Every CoreAudio device that can record: the built-in mic, headsets, AirPods, USB mics. Empty if unavailable."""
+    return [dev for dev in _audio_list(1, "dev#") or [] if _audio_list(dev, "stm#", "inpt")]  # has an input stream
+
+
+def _audio_processes():
+    """Every app talking to CoreAudio, and whether it records or plays right now. None where the Mac cannot
+    tell us (older than macOS 14.2): the per-app answer is what the orange microphone dot is built on."""
+    procs = _audio_list(1, "prs#")
+    if procs is None:
+        return None
+    out = []
+    for obj in procs:
+        pid = _audio_prop(obj, "ppid", "glob")
+        out.append({"pid": pid, "app": _audio_bundle_id(obj) or _process_name(pid) or f"pid {pid}",
+                    "input": bool(_audio_prop(obj, "piri", "glob")), "output": bool(_audio_prop(obj, "piro", "glob"))})
+    return out
+
+
+# Always recording, never a person talking: the "Hey Siri" listener and the audio history daemon.
+MIC_NEVER_BUSY = ("com.apple.CoreSpeech", "corespeechd", "historicalaudiod")
+# Apps you take calls in. Seen recording once, they keep the microphone "busy" while they still play sound,
+# because a muted web call lets go of the microphone but you are still listening to people.
+CALL_APPS = ("us.zoom.", "com.microsoft.teams", "com.tinyspeck.slackmacgap", "com.hnc.Discord", "com.apple.FaceTime",
+             "com.cisco.webex", "com.apple.WebKit.GPU", "com.google.Chrome", "com.brave.Browser",
+             "company.thebrowser.Browser", "com.microsoft.edgemac", "org.mozilla.firefox")
+
+
+def is_call_app(app):
+    return any(app.startswith(prefix) for prefix in CALL_APPS)
+
+
+def remember_call(proc, now):
+    atomic_write(CALL_FILE, json.dumps({"app": proc["app"], "pid": proc["pid"], "at": now}))
+
+
+def last_call():
+    try:
+        return json.loads(CALL_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def mac_mic_user(cfg, now):
+    """Who is recording on this Mac, or "". Falls back to the devices where the per-app answer is missing."""
+    procs = _audio_processes()
+    if procs is None:
+        # older macOS: is any real input device running? Virtual and aggregate ones (BlackHole, Loopback)
+        # can run all day without a person on the other end, so they do not count
+        devices = _audio_inputs() or [_audio_prop(1, "dIn ", "glob")]
+        real = [d for d in devices if d and _audio_prop(d, "tran", "glob") not in (_fourcc("virt"), _fourcc("grup"))]
+        return "a microphone" if any(_audio_prop(d, "gone", "inpt") for d in real) else ""
+    ignore = set(MIC_NEVER_BUSY) | set((cfg or {}).get("mic_ignore_apps") or [])
+    recording = [p for p in procs if p["input"] and p["app"] not in ignore and p["pid"] != os.getpid()]
+    calls = [p for p in recording if is_call_app(p["app"])]
+    if calls:
+        remember_call(calls[0], now)
+        return calls[0]["app"]
+    if recording:
+        return recording[0]["app"]
+    call = last_call()
+    grace = float((cfg or {}).get("call_grace_seconds", DEFAULTS["call_grace_seconds"]))
+    if call and now - call.get("at", 0) < grace:
+        if any(p["pid"] == call.get("pid") and p["output"] for p in procs):
+            return f"{call.get('app')} (call still playing, mic muted)"
+    return ""
+
+
 WINDOWS_MIC = ("$p = 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\microphone';"
                "$busy = Get-ChildItem $p -Recurse -ErrorAction SilentlyContinue | "
                "Where-Object { $_.GetValue('LastUsedTimeStop') -eq 0 };"
                "if ($busy) { 'busy' } else { 'free' }")
 
 
-def mic_in_use():
-    """True when any app is recording from the microphone right now."""
+def mic_in_use(cfg=None):
+    """Who is using the microphone right now (an app name), or "" when it is free."""
     if OS == MAC:
-        dev = _audio_prop(1, "dIn ", "glob")  # default input device
-        return bool(dev) and bool(_audio_prop(dev, "gone", "inpt"))  # device is running somewhere
+        return mac_mic_user(cfg, time.time())
     if OS == WINDOWS:  # Windows records who is using the microphone; an app still using it has no stop time
         try:
             r = subprocess.run(PS + [WINDOWS_MIC], capture_output=True, text=True, timeout=6)
-            return "busy" in r.stdout
+            return "an app" if "busy" in r.stdout else ""
         except Exception:
-            return False
+            return ""
     try:  # Linux: any capture device that ALSA says is running
         for status in Path("/proc/asound").glob("card*/pcm*c/sub*/status"):
             if "state: RUNNING" in status.read_text(errors="replace"):
-                return True
+                return "a capture device"
     except Exception:
         pass
-    return False
+    return ""
 
 
 def headphones_on():
@@ -796,18 +921,19 @@ def headphones_on():
 
 def wait_for_mic(cfg):
     """Wait until the microphone is free. Returns True if it is safe to talk."""
-    if not cfg.get("wait_for_mic", True) or not mic_in_use():
+    who = cfg.get("wait_for_mic", True) and mic_in_use(cfg)
+    if not who:
         return True
-    log("mic", "-", "microphone in use, holding the voice")
+    log("mic", "-", f"microphone in use by {who}, holding the voice")
     deadline = time.time() + float(cfg.get("mic_wait_max_seconds", 120))
     while time.time() < deadline:
         time.sleep(1)
-        if not mic_in_use():
+        if not mic_in_use(cfg):
             time.sleep(float(cfg.get("mic_settle_seconds", 1.5)))  # let dictation finish its last words
-            if not mic_in_use():
+            if not mic_in_use(cfg):
                 log("mic", "-", "microphone free, speaking now")
                 return True
-    log("mic", "-", "microphone still busy after the wait, sound only")
+    log("mic", "-", f"microphone still busy after the wait ({mic_in_use(cfg) or who}), sound only")
     return False
 
 
@@ -855,7 +981,7 @@ def speech_command(cfg, text):
 def say_unless_mic(cfg, text):
     """Say the line, watching the microphone the whole time. Stops at once if it opens. True if cut short."""
     watch = cfg.get("wait_for_mic", True)
-    if watch and mic_in_use():  # it may have opened while the music was being turned down
+    if watch and mic_in_use(cfg):  # it may have opened while the music was being turned down
         return True
     command, extra = speech_command(cfg, text)
     if not command:
@@ -865,10 +991,12 @@ def say_unless_mic(cfg, text):
     proc = subprocess.Popen(command, env={**os.environ, **extra})
     deadline = time.time() + 120
     while proc.poll() is None and time.time() < deadline:
-        if watch and mic_in_use():
+        who = watch and mic_in_use(cfg)
+        if who:
             proc.terminate()
+            log("mic", "-", f"{who} started using the microphone")
             return True
-        time.sleep(0.2)
+        time.sleep(0.5)  # asking every app about the mic costs coreaudiod some work; twice a second is plenty
     if proc.poll() is None:
         proc.kill()
     return False
@@ -900,11 +1028,11 @@ def one_at_a_time(path):
 
 
 def speak(cfg, text):
+    """Say the line. False when the microphone kept it quiet, so the caller can light the screen instead."""
     with one_at_a_time(SPEECH_LOCK):
         for attempt in (1, 2):  # if the mic opens mid-sentence: stop, wait for it to close, say it once more
             if not wait_for_mic(cfg):
-                chime(cfg)
-                return
+                return False
             saved = duck_music(cfg)
             ducked = duck_browsers(cfg)
             try:
@@ -915,9 +1043,10 @@ def speak(cfg, text):
                 restore_music(saved)
                 restore_browsers(cfg, ducked)
             if not cut_short:
-                return
+                return True
             log("mic", "-", "microphone opened mid-sentence, stopped talking"
                 + (", will say it again when the mic closes" if attempt == 1 else ", giving up"))
+    return False
 
 
 LINUX_CHIMES = ("/usr/share/sounds/freedesktop/stereo/complete.oga",
@@ -1065,14 +1194,25 @@ def light_commands():
     yield [str(LIGHT_BUILT), str(LIGHT_FILE)]
 
 
+def flash(cfg, job, kind):
+    """Put this job on the screen light."""
+    with locked_state() as st:
+        s = st["sessions"].setdefault(job["session"], {})
+        light_on(cfg, st, s, job["project"], kind, time.time(), detail=job.get("question", ""))
+
+
 def intimate(cfg, job, line, kind):
     """Get your attention the way the job says: screen light, voice, or both."""
-    if job.get("light"):
-        with locked_state() as st:
-            s = st["sessions"].setdefault(job["session"], {})
-            light_on(cfg, st, s, job["project"], kind, time.time(), detail=job.get("question", ""))
-    if job.get("voice", True):
-        speak(cfg, line)
+    lit = bool(job.get("light"))
+    if lit:
+        flash(cfg, job, kind)
+    if job.get("voice", True) and not speak(cfg, line) and not lit:
+        # the mic stayed busy: you are on a call, so catch your eye instead of making a sound in it
+        if (cfg.get("light") or {}).get("enabled", True):
+            flash(cfg, job, kind)
+            log("mic", "-", "microphone busy, lit the screen instead of speaking")
+        else:
+            chime(cfg)
 
 
 def announce_word(job):
@@ -1131,6 +1271,11 @@ def announce(cfg, st, s, sid, event, spoken, folder, kind, now, check_focus, que
         log(event, spoken, f"{announce_word(job)} {kind}: {line if voice_ok else sound_note + ', so no sound'}", **why)
 
 
+# Background task types (Claude Code's labels) that always end and wake the session.
+# Shells and monitors can live for hours (dev servers, watchers), so they never hold a "done".
+AGENT_TASKS = ("subagent", "workflow")
+
+
 def decide_stop(cfg, st, s, sid, payload, spoken, folder, now):
     if payload.get("stop_hook_active"):
         log("stop", spoken, "quiet: stop_hook_active")
@@ -1145,19 +1290,27 @@ def decide_stop(cfg, st, s, sid, payload, spoken, folder, now):
     duration = round(now - last_prompt) if last_prompt else None
     tools = info["tool_uses"]
     running = payload.get("background_tasks") or []  # work still in flight that will wake this session later
+    agents = [t for t in running if isinstance(t, dict) and t.get("type") in AGENT_TASKS]
     T = cfg["timing"]
     why = {"took": f"{duration}s" if duration is not None else "unknown", "tools": tools,
-           "background": len(running) or None}
+           "background": len(running) or None, "agents": len(agents) or None}
     asking = info["is_question"] and cfg.get("always_announce_questions", True)
     if not asking:  # a question back to you is always worth a word; other replies must earn it
-        if duration is not None and duration < T["min_task_seconds"]:
-            log("stop", spoken, "quiet: short turn", **why)
-            return
-        if tools == 0 and info["readable"] and (duration is None or duration < T["chat_needs_seconds"]):
-            log("stop", spoken, "quiet: chat only, no work done", **why)
+        if agents and cfg.get("wait_for_agents", True):
+            s["awaiting_agents"] = True  # the real finish comes on a later stop, once the agents wake the session
+            log("stop", spoken, f"quiet: {len(agents)} agent(s) still working, will report when they finish", **why)
             return
         if running and cfg.get("wait_for_background_tasks", True):
             log("stop", spoken, f"quiet: waiting on {len(running)} background task(s), will report when it wakes", **why)
+            return
+        if s.pop("awaiting_agents", False):
+            # the wrap-up after the agents is often a few seconds long; it is still the end of the whole job
+            why["after_agents"] = True
+        elif duration is not None and duration < T["min_task_seconds"]:
+            log("stop", spoken, "quiet: short turn", **why)
+            return
+        elif tools == 0 and info["readable"] and (duration is None or duration < T["chat_needs_seconds"]):
+            log("stop", spoken, "quiet: chat only, no work done", **why)
             return
     if now - s.get("last_spoken", 0) < T["debounce_seconds"]:
         log("stop", spoken, "quiet: just spoke for this session", **why)
@@ -1241,6 +1394,9 @@ def cmd_hook(event):
             s["rename"] = session_rename(payload.get("transcript_path")) or s.get("rename", "")
         proj = project_settings(cfg, folder)
         spoken = proj["say"]
+        if OS == MAC and cfg.get("wait_for_mic", True):
+            with contextlib.suppress(Exception):
+                mic_in_use(cfg)  # notice a call app on the mic now, so a call muted later is still known as a call
         if event == "prompt" and is_system_notice(payload.get("prompt")):
             s["last_wake"] = now  # background work woke the session; you did not type, so nothing is acknowledged
             s["ended"] = False
@@ -1248,6 +1404,7 @@ def cmd_hook(event):
         elif event == "prompt":
             s["last_prompt"] = now
             s["ended"] = False
+            s.pop("awaiting_agents", None)  # a new ask from you; any agents still out show up on its stop again
             light_off(cfg, st, s)
             log("prompt", spoken, "noted")
         elif event == "subagent_stop":
@@ -1368,6 +1525,34 @@ def cmd_log(n="30"):
     return 0
 
 
+def cmd_mic():
+    """Everything Koovi sees about the microphone, to paste when it talked into a call."""
+    cfg = load_config()
+    who = mic_in_use(cfg)
+    print(f"microphone in use by {who}" if who else "microphone free")
+    if OS != MAC:
+        return 0
+    procs = _audio_processes()
+    if procs is None:
+        print("per-app check: not available on this Mac (needs macOS 14.2 or newer), checking devices instead")
+    else:
+        ignore = set(MIC_NEVER_BUSY) | set(cfg.get("mic_ignore_apps") or [])
+        for p in procs:
+            if p["input"] or p["output"]:
+                what = "+".join(k for k in ("input", "output") if p[k])
+                note = " (ignored)" if p["app"] in ignore else (" (call app)" if is_call_app(p["app"]) else "")
+                print(f"  {p['app']:<45} pid {p['pid']:<7} {what}{note}")
+    call = last_call()
+    if call:
+        print(f"last call app on the mic: {call.get('app')}, {round(time.time() - call.get('at', 0))}s ago"
+              f" (counts for {cfg.get('call_grace_seconds')}s while it plays sound)")
+    for dev in _audio_inputs():
+        tran = (_audio_prop(dev, "tran", "glob") or 0).to_bytes(4, "big").decode(errors="replace")
+        default = " default" if dev == _audio_prop(1, "dIn ", "glob") else ""
+        print(f"  input device {dev}: {tran}{default}, running={_audio_prop(dev, 'gone', 'inpt')}")
+    return 0
+
+
 def claude_plugin_enabled():
     """True when Koovi is installed as a Claude Code plugin, which carries its own hooks."""
     try:
@@ -1443,7 +1628,8 @@ def cmd_doctor():
         else:
             check(f"{app}: cannot turn down music tabs ({info[:60]})", True)
     audio_ok = _audio_prop(1, "dIn ", "glob") is not None if OS == MAC else True
-    check("microphone check works" + ((" (mic is in use right now)" if mic_in_use() else " (mic is free right now)") if audio_ok else ""),
+    who = mic_in_use(cfg) if audio_ok else ""
+    check("microphone check works" + ((f" (in use by {who} right now)" if who else " (mic is free right now)") if audio_ok else ""),
           audio_ok, "the sound system did not answer; Koovi will talk without waiting for the mic")
     STATE_DIR.mkdir(exist_ok=True)
     voice_ok, note = voice_allowed(cfg)
@@ -1623,8 +1809,7 @@ def main(argv):
     if cmd == "doctor":
         return cmd_doctor()
     if cmd == "mic":
-        print("microphone in use" if mic_in_use() else "microphone free")
-        return 0
+        return cmd_mic()
     if cmd == "light":
         return cmd_light(*args)
     if cmd == "light-start":

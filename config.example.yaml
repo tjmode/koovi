@@ -23,6 +23,9 @@ question_words: 8
 # work wakes the session. Only worth it if your background jobs finish quickly. Long-running ones
 # (watchers, monitors, agents that live for hours) would silence real finishes, so this is off.
 wait_for_background_tasks: false
+# true: research agents and workflows still running means the job is not done yet. Koovi stays quiet
+# and says "done" once they finish and Claude wraps up. Shells and monitors never hold it back.
+wait_for_agents: true
 
 # How Koovi gets your attention.
 #   voice  talk (the normal way)
@@ -55,6 +58,12 @@ browser_music_sites: [youtube.com, soundcloud.com, open.spotify.com, music.apple
 wait_for_mic: true
 mic_wait_max_seconds: 120   # after this long, give up on the voice and just play a sound
 mic_settle_seconds: 1.5     # small pause after the mic closes, so dictation finishes its last words
+# Apps that keep the microphone open all day without anyone talking (noise filters, recorders).
+# Run `koovi mic` to see which app Koovi thinks is using it, then add its name here, e.g. [ai.krisp.krispMac]
+mic_ignore_apps: []
+# A call app seen on the microphone still counts as a call this long while it plays sound,
+# so a muted Google Meet tab keeps Koovi quiet too.
+call_grace_seconds: 600
 
 # No voice between these times, sound only. Leave both empty to disable.
 quiet_hours:
