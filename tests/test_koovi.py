@@ -43,6 +43,7 @@ class Sandbox(unittest.TestCase):
         koovi.LIGHT_FILE = self.tmp / "light.json"
         koovi.CALL_FILE = self.tmp / "call.json"
         koovi.STATE_LOCK = self.tmp / "state.lock"
+        koovi.CONFIG_LOCK = self.tmp / "config.lock"
         koovi.SPEECH_LOCK = self.tmp / "speech.lock"
         self.jobs, self.detached = [], []
         koovi.spawn_worker = lambda job: self.jobs.append(job)
@@ -614,6 +615,157 @@ class WhoHasTheMic(Sandbox):
         self.assertEqual(koovi.mic_in_use(self.cfg), "", "a virtual device running all day is not a person")
         running[120] = 1  # the headset mic, not the default one
         self.assertEqual(koovi.mic_in_use(self.cfg), "a microphone")
+
+
+class OnAndOff(Sandbox):
+    """enabled: false means silence everywhere, at once, while Koovi keeps track of your sessions."""
+
+    def turn(self, on):
+        self.assertEqual(koovi.cmd_set("enabled", "true" if on else "false"), 0)
+
+    def hook(self, event, **payload):
+        self.addCleanup(setattr, koovi, "hook_payload", koovi.hook_payload)
+        payload.update({"session_id": "s1", "cwd": str(self.tmp / "proj")})
+        koovi.hook_payload = lambda: payload
+        koovi.cmd_hook(event)
+
+    def test_off_says_nothing_but_still_keeps_track(self):
+        self.turn(False)
+        path = transcript(self.tmp / "t.jsonl", tool_uses=3)
+        self.hook("prompt", prompt="build it")
+        self.hook("stop", transcript_path=str(path))
+        self.assertEqual(self.jobs, [])
+        self.assertIn("quiet: Koovi is off", self.diary())
+        with koovi.locked_state() as st:
+            self.assertTrue(st["sessions"]["s1"].get("last_prompt"), "your prompt is still recorded")
+
+    def test_a_waiting_reminder_stays_quiet_once_you_turn_it_off(self):
+        said = []
+        self.addCleanup(setattr, koovi, "intimate", koovi.intimate)
+        koovi.intimate = lambda cfg, job, line, kind: said.append(line)
+        koovi.set_config_value("timing.reminder_after_seconds", 0)
+        self.turn(False)
+        now = time.time()
+        with koovi.locked_state() as st:
+            st["sessions"]["s1"] = {"folder": "proj", "first_seen": now - 600, "last_seen": now, "last_prompt": now - 40}
+        job = {"session": "s1", "project": "Proj", "folder": "proj", "kind": "asking", "line": "Proj asks.",
+               "held": True, "spoken_at": now, "reminders": 1, "voice": True, "light": False, "question": ""}
+        koovi.cmd_announce(json.dumps(job))
+        self.assertEqual(said, [])
+        self.assertIn("skipped: Koovi is off", self.diary())
+
+    def test_a_line_that_waited_for_the_mic_checks_the_switch_again(self):
+        saved = (koovi.wait_for_mic, koovi.say_unless_mic, koovi.duck_music)
+        self.addCleanup(lambda: (setattr(koovi, "wait_for_mic", saved[0]), setattr(koovi, "say_unless_mic", saved[1]),
+                                 setattr(koovi, "duck_music", saved[2])))
+        said = []
+
+        def call_ends_and_you_had_turned_it_off(cfg):
+            koovi.set_config_value("enabled", False)
+            return True
+        koovi.wait_for_mic = call_ends_and_you_had_turned_it_off
+        koovi.say_unless_mic = lambda cfg, text: said.append(text)
+        koovi.duck_music = lambda cfg: said.append("ducked")
+        self.assertTrue(koovi.speak(self.cfg, "Proj is done."), "no light to make up for it either")
+        self.assertEqual(said, [])
+
+    def test_nothing_starts_once_it_is_off(self):
+        spoken = []
+        self.addCleanup(setattr, koovi, "speak", koovi.speak)
+        koovi.speak = lambda cfg, text, obey_off=True: spoken.append(text)
+        self.turn(False)
+        koovi.intimate(self.cfg, {"project": "Proj", "light": True, "voice": True}, "Proj is done.", "done")
+        self.assertEqual(spoken, [])
+        self.assertFalse(koovi.LIGHT_FILE.exists() and json.loads(koovi.LIGHT_FILE.read_text())["items"])
+
+    def test_the_test_line_still_plays_and_says_it_is_off(self):
+        heard = []
+        self.addCleanup(setattr, koovi, "speak", koovi.speak)
+        koovi.speak = lambda cfg, text, obey_off=True: heard.append(obey_off)
+        self.turn(False)
+        koovi.cmd_test("done", "Proj")
+        self.assertEqual(heard, [False])
+
+    def test_turning_off_puts_out_a_light_that_is_showing(self):
+        now = time.time()
+        with koovi.locked_state() as st:
+            s = st["sessions"].setdefault("s1", {"folder": "proj", "last_seen": now})
+            s["light"] = {"label": "Proj", "kind": "done", "at": now, "until": now + 60}
+            koovi.light_render(self.cfg, st)
+        self.assertTrue(json.loads(koovi.LIGHT_FILE.read_text())["items"])
+        self.turn(False)
+        self.assertEqual(json.loads(koovi.LIGHT_FILE.read_text())["items"], [])
+
+    def test_an_old_settings_file_without_the_switch_counts_as_on_and_takes_it(self):
+        koovi.CONFIG_PATH.write_text("user: boss\n")
+        self.assertTrue(koovi.load_config()["enabled"])
+        self.turn(False)
+        self.assertFalse(koovi.load_config()["enabled"])
+        self.assertEqual(koovi.load_config()["user"], "boss")
+
+
+class SettingsScreen(Sandbox):
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(setattr, koovi, "mic_in_use", koovi.mic_in_use)
+        koovi.mic_in_use = lambda cfg=None: "us.zoom.xos"
+
+    def test_set_refuses_what_is_not_a_setting_or_not_the_right_kind(self):
+        before = koovi.CONFIG_PATH.read_text()
+        for key, value in (("enabeld", "false"), ("mode", "loud"), ("wait_for_mic", "sometimes"),
+                           ("rate", "fast"), ("quiet_hours.start", "late"), ("phrases", "x"), ("projects.app", "x")):
+            self.assertEqual(koovi.cmd_set(key, value), 1, f"{key} {value} should be refused")
+        self.assertEqual(koovi.CONFIG_PATH.read_text(), before)
+
+    def test_set_takes_what_it_should(self):
+        for key, value in (("mode", "quiet"), ("wait_for_agents", "false"), ("rate", "190"),
+                           ("quiet_hours.start", "23:00"), ("quiet_hours.end", "08:00"), ("light.corner", "bottom-left")):
+            self.assertEqual(koovi.cmd_set(key, value), 0, f"{key} {value}")
+        cfg = koovi.load_config()
+        self.assertEqual((cfg["mode"], cfg["wait_for_agents"], cfg["rate"]), ("quiet", False, 190))
+        self.assertTrue(koovi.in_quiet_hours(cfg) in (True, False))
+        self.assertEqual(koovi.cmd_set("quiet_hours.start", "off"), 0)
+        self.assertIsNone(koovi.load_config()["quiet_hours"]["start"])
+
+    def test_a_file_that_does_not_read_is_never_written_over(self):
+        koovi.CONFIG_PATH.write_text("user: boss\nmode voice\n")
+        self.assertEqual(koovi.cmd_set("mode", "quiet"), 1)
+        self.assertEqual(koovi.cmd_mute(True, "proj"), 1)
+        self.assertEqual(koovi.CONFIG_PATH.read_text(), "user: boss\nmode voice\n")
+        snap = koovi.settings_snapshot()
+        self.assertIn("cannot read line", snap["error"])
+        self.assertEqual(koovi.cmd_settings(), 1)
+
+    def test_two_changes_at_the_same_moment_both_land(self):
+        import threading
+        changes = [("rate", 190), ("user", "tony"), ("question_words", 6)] * 30
+        start = threading.Barrier(len(changes))
+
+        def write(key, value):
+            start.wait()  # all at the same moment
+            koovi.set_config_value(key, value)
+        writers = [threading.Thread(target=write, args=change) for change in changes]
+        for w in writers:
+            w.start()
+        for w in writers:
+            w.join()
+        cfg = koovi.load_config()
+        self.assertEqual((cfg["rate"], cfg["user"], cfg["question_words"]), (190, "tony", 6))
+
+    def test_the_snapshot_holds_the_main_switches(self):
+        now = time.time()
+        with koovi.locked_state() as st:
+            st["sessions"]["a"] = {"folder": "payments", "last_seen": now}
+            st["sessions"]["b"] = {"folder": "checkout", "last_seen": now - 60}
+        koovi.set_project_mute("checkout", True)
+        snap = koovi.settings_snapshot()
+        self.assertEqual((snap["enabled"], snap["mode"], snap["wait_for_mic"], snap["wait_for_agents"]),
+                         (True, "voice", True, True))
+        self.assertEqual(snap["mic"], "us.zoom.xos")
+        self.assertEqual(snap["muted"], ["checkout"])
+        self.assertEqual(snap["recent_projects"], ["payments", "checkout"])
+        self.assertEqual(snap["version"], koovi.KOOVI_VERSION)
+        self.assertEqual(snap["error"], "")
 
 
 class Packaging(unittest.TestCase):

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0
+
+- `/koovi:settings`: the main switches in one place, changed by clicking. On or off, voice or
+  screen light, quiet during calls, wait for research. Each one shows how it is set now, and
+  only what you change is written.
+- An off switch, `enabled`. Off means no voice, no screen light and no chime, while Koovi still
+  keeps track of your sessions, so turning it back on picks up cleanly. A light that is showing
+  goes out, and `/koovi:status`, `/koovi:test` and `/koovi:doctor` say "Koovi is OFF" first.
+- A change now reaches lines already waiting. A reminder, or a line held while your microphone was
+  busy, reads the settings again before it speaks, so off really means off and a new mode counts.
+- `koovi.sh settings` prints the main switches, `--json` for scripts and the coming menu bar icon.
+- `/koovi:set` checks what it writes: a setting that does not exist, or a value of the wrong kind,
+  is refused with a reason instead of saved silently. Quiet hours take a time like 23:00, or off.
+- Settings are never written over a file Koovi cannot read, and two changes at the same moment
+  both land.
+
 ## 0.10.2
 
 - Never speaks into a call on a headset. Koovi only looked at the Mac's default microphone, so a

@@ -3,6 +3,9 @@
 # Blanks you can use inside phrase lines: {assistant} {user} {project} {question}
 # {question} is the question Claude asked. Lines with it are used only when Koovi could read one.
 
+# false: Koovi still keeps track of your sessions but never speaks or flashes. /koovi:settings turns it back on.
+enabled: true
+
 assistant: Koovi         # what the voice calls itself. Rename it to anything you like.
 user: boss               # what it calls you
 voice: Samantha          # a Mac voice. See the list with:  koovi.sh voices

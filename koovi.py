@@ -16,6 +16,7 @@ Commands used by the hooks (they read a JSON payload on stdin):
 
 Commands for you (the /koovi:koovi command in Claude Code runs these too):
   koovi.py status          version, mode, screen light, muted projects, last decisions
+  koovi.py settings [--json]  the main switches: on/off, how it reaches you, calls, research, quiet hours
   koovi.py voice|quiet|auto   switch how it reaches you: talk, screen light only, or talk only on headphones
   koovi.py mute [folder]   silence one project (default: the folder you are in);  unmute to undo
   koovi.py set KEY VALUE   change any setting, e.g. set user boss, set rate 190, set light.enabled false
@@ -49,7 +50,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.10.2"
+KOOVI_VERSION = "0.11.0"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -62,6 +63,7 @@ STATE_FILE = STATE_DIR / "state.json"
 LOG_FILE = STATE_DIR / "koovi.log"
 SPEECH_LOCK = STATE_DIR / "speech.lock"
 STATE_LOCK = STATE_DIR / "state.lock"
+CONFIG_LOCK = STATE_DIR / "config.lock"           # one writer of config.yaml at a time
 LIGHT_FILE = STATE_DIR / "light.json"             # what the screen light shows right now
 CALL_FILE = STATE_DIR / "call.json"               # the last call app seen using the microphone
 LIGHT_SRC = HERE / "light" / "KooviLight.swift"
@@ -70,6 +72,7 @@ LIGHT_BUILT = STATE_DIR / "bin" / "koovi-light"  # helper built here if the ship
 LIGHT_PS1 = HERE / "light" / "KooviLight.ps1"    # the same idea for Windows
 
 DEFAULTS = {
+    "enabled": True,  # false: Koovi still keeps track of your sessions, but never speaks or flashes
     "assistant": "Koovi",
     "user": "boss",
     "voice": "Samantha",
@@ -322,7 +325,7 @@ LOG_KEEP_LINES = 3000
 
 def atomic_write(path, text):
     """Write the whole file, then swap it into place, so a crash never leaves it half written."""
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")  # two writers never share a temp file
     tmp.write_text(text)
     os.replace(tmp, path)
 
@@ -1027,12 +1030,20 @@ def one_at_a_time(path):
                     pass
 
 
-def speak(cfg, text):
+def koovi_is_on():
+    """Read straight from the settings file: a switch flipped while a line waits must still count."""
+    return load_config().get("enabled", True) is not False
+
+
+def speak(cfg, text, obey_off=True):
     """Say the line. False when the microphone kept it quiet, so the caller can light the screen instead."""
     with one_at_a_time(SPEECH_LOCK):
         for attempt in (1, 2):  # if the mic opens mid-sentence: stop, wait for it to close, say it once more
             if not wait_for_mic(cfg):
                 return False
+            if obey_off and not koovi_is_on():
+                log("speak", "-", "quiet: Koovi was turned off while the line waited")
+                return True  # nothing to make up for with a light: you asked for silence
             saved = duck_music(cfg)
             ducked = duck_browsers(cfg)
             try:
@@ -1160,6 +1171,14 @@ def light_on(cfg, st, s, spoken, kind, now, detail=""):
     spawn_detached("light-start")
 
 
+def light_clear_all(cfg):
+    """Koovi was switched off: nothing stays lit."""
+    with locked_state() as st:
+        for s in st["sessions"].values():
+            s.pop("light", None)
+        light_render(cfg, st)
+
+
 def light_off(cfg, st, s):
     """You replied, or the session closed: end the flash early."""
     if s.pop("light", None) is not None:
@@ -1203,6 +1222,9 @@ def flash(cfg, job, kind):
 
 def intimate(cfg, job, line, kind):
     """Get your attention the way the job says: screen light, voice, or both."""
+    if not koovi_is_on():
+        log("announce", job.get("project", "-"), "quiet: Koovi was turned off before the line was said")
+        return
     lit = bool(job.get("light"))
     if lit:
         flash(cfg, job, kind)
@@ -1414,6 +1436,8 @@ def cmd_hook(event):
             s["ended"] = True
             light_off(cfg, st, s)
             log("session_end", spoken, "noted", reason=payload.get("reason"))
+        elif not cfg.get("enabled", True):
+            log(event, spoken, "quiet: Koovi is off")
         elif proj["mute"]:
             log(event, spoken, "quiet: project is muted")
         elif event == "stop":
@@ -1437,6 +1461,10 @@ def cmd_announce(job_json):
     spoken_at = job["spoken_at"]
     for _ in range(int(job.get("reminders", 0))):
         time.sleep(float(cfg["timing"]["reminder_after_seconds"]))
+        cfg = load_config()  # you may have changed something while it waited
+        if not cfg.get("enabled", True):
+            log("reminder", spoken, "skipped: Koovi is off")
+            return
         with locked_state() as st:
             s = st["sessions"].get(sid, {})
             if s.get("last_prompt", 0) > spoken_at:
@@ -1471,8 +1499,8 @@ def cmd_test(kind="done", project="Payments", *question):
     with locked_state() as st:
         line = pick_line(cfg, kind, project, st, question=" ".join(question))
     heard = cfg["voice"] if (OS != MAC or voice_installed(cfg["voice"])) else "the Mac's own voice"
-    print(f"[{heard}] {line}")
-    speak(cfg, line)
+    print(off_notice(cfg) + f"[{heard}] {line}")
+    speak(cfg, line, obey_off=False)
     log("test", project, f"SPEAK {kind}: {line}")
     return 0
 
@@ -1578,6 +1606,7 @@ def cmd_doctor():
         readable, problem = False, str(exc)
     check(f"settings file reads ({CONFIG_PATH})", readable, f"fix this line: {problem}")
     cfg = load_config()
+    print("  " + off_notice(cfg) if off_notice(cfg) else "", end="")
     command, _ = speech_command(cfg, "test")
     check("something on this machine can talk", bool(command),
           "install a speech program: sudo apt install speech-dispatcher")
@@ -1679,6 +1708,8 @@ def cmd_voices():
 
 
 def _yaml_value(value):
+    if value is None:
+        return ""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
@@ -1689,8 +1720,27 @@ def _yaml_value(value):
 
 def set_config_value(path, value):
     """Change one setting in your config file, keeping comments and order. Use a dot for a nested key: light.enabled"""
+    with one_at_a_time(CONFIG_LOCK):
+        lines = readable_config_lines()
+        _set_line(lines, path, value)
+        atomic_write(CONFIG_PATH, "\n".join(lines) + "\n")
+
+
+class SettingsUnreadable(Exception):
+    """The settings file has a line Koovi cannot read, so writing it now could throw your other settings away."""
+
+
+def readable_config_lines():
     ensure_config()
-    lines = CONFIG_PATH.read_text().splitlines()
+    text = CONFIG_PATH.read_text()
+    try:
+        parse_yaml(text)
+    except ValueError as exc:
+        raise SettingsUnreadable(str(exc)) from None
+    return text.splitlines()
+
+
+def _set_line(lines, path, value):
     keys = path.split(".")
     parent_indent, start, end = -1, 0, len(lines)
     for depth, key in enumerate(keys):
@@ -1715,13 +1765,17 @@ def set_config_value(path, value):
             break
         parent_indent, start = indent, i + 1
         end = next((j for j in range(start, len(lines)) if lines[j].strip() and not lines[j].startswith(" " * (indent + 1))), len(lines))
-    atomic_write(CONFIG_PATH, "\n".join(lines) + "\n")
 
 
 def set_project_mute(folder, mute):
     """Mute or unmute one project folder in your config file."""
-    ensure_config()
-    lines = CONFIG_PATH.read_text().splitlines()
+    with one_at_a_time(CONFIG_LOCK):
+        lines = readable_config_lines()
+        _mute_line(lines, folder, mute)
+        atomic_write(CONFIG_PATH, "\n".join(lines) + "\n")
+
+
+def _mute_line(lines, folder, mute):
     head = next((i for i, ln in enumerate(lines) if re.match(r"^projects:\s*(#.*)?$", ln)), None)
     if head is None:
         lines += ["projects:"]
@@ -1741,28 +1795,136 @@ def set_project_mute(folder, mute):
             break
     parts = ([f'say: {_yaml_value(entry["say"])}'] if entry.get("say") else []) + [f"mute: {_yaml_value(mute)}"]
     lines.insert(end, f"  {_yaml_value(folder)}: {{ {', '.join(parts)} }}")
-    atomic_write(CONFIG_PATH, "\n".join(lines) + "\n")
 
 
-def cmd_set(key, *value):
+MODES = {"voice": "speaks out loud", "quiet": "screen light only, no sound",
+         "auto": "speaks on headphones, screen light on speakers"}
+
+
+def setting_problem(key, value):
+    """What is wrong with writing VALUE to KEY, or "" when it is fine."""
+    node = DEFAULTS
+    for part in key.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return f"there is no setting called '{key}'. The names are in {CONFIG_PATH}"
+        node = node[part]
+    if isinstance(node, (dict, list)):
+        return f"'{key}' holds several values. Change it in {CONFIG_PATH}"
+    if key == "mode" and value not in MODES:
+        return "mode is voice, quiet or auto"
+    if key.startswith("quiet_hours."):
+        if value in (None, False) or re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", str(value)):
+            return ""
+        return f"{key} is a time like 23:00, or off"
+    if isinstance(node, bool) and not isinstance(value, bool):
+        return f"{key} is true or false"
+    if isinstance(node, (int, float)) and not isinstance(node, bool) and (
+            isinstance(value, bool) or not isinstance(value, (int, float))):
+        return f"{key} is a number"
+    return ""
+
+
+def cmd_set(key="", *value):
     if not key or not value:
         print("usage: koovi.sh set KEY VALUE     (KEY like mode, voice, rate, user, light.enabled)")
         return 1
-    set_config_value(key, _scalar(" ".join(value)))
-    print(f"{key} set to {' '.join(value)}")
+    new = _scalar(" ".join(value))
+    problem = setting_problem(key, new)
+    if problem:
+        print(f"not changed: {problem}")
+        return 1
+    if key.startswith("quiet_hours.") and new is False:
+        new = None  # "off" leaves the time empty
+    try:
+        set_config_value(key, new)
+    except SettingsUnreadable as exc:
+        print(f"not changed: your settings file has a line Koovi cannot read ({exc}). Fix it in {CONFIG_PATH}")
+        return 1
+    print(f"{key} set to {_yaml_value(new) or 'off'}")
+    if key == "enabled" and new is False:
+        light_clear_all(load_config())
+        print("Koovi is off. It keeps track of your sessions but will not speak or flash until you turn it on.")
     return 0
 
 
 def cmd_mute(mute, *folder):
     name = " ".join(folder).strip() or Path.cwd().name
-    set_project_mute(name, mute)
+    try:
+        set_project_mute(name, mute)
+    except SettingsUnreadable as exc:
+        print(f"not changed: your settings file has a line Koovi cannot read ({exc}). Fix it in {CONFIG_PATH}")
+        return 1
     print(f"{name}: {'muted' if mute else 'unmuted'}")
+    return 0
+
+
+def off_notice(cfg):
+    if cfg.get("enabled", True) is False:
+        return "Koovi is OFF: it will not speak or flash. Turn it on with /koovi:settings or: koovi.sh set enabled true\n"
+    return ""
+
+
+def settings_snapshot():
+    """The main switches as they are right now, for /koovi:settings and the menu bar."""
+    cfg = load_config()
+    try:
+        parse_yaml(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else None
+        error = ""
+    except Exception as exc:
+        error = str(exc)
+    try:
+        st = json.loads(STATE_FILE.read_text())
+    except Exception:
+        st = {}
+    sessions = sorted((st.get("sessions") or {}).values(), key=lambda s: -float(s.get("last_seen") or 0))
+    recent = list(dict.fromkeys(str(s["folder"]) for s in sessions if s.get("folder")))
+    mic = None
+    if cfg.get("wait_for_mic", True):
+        with contextlib.suppress(Exception):
+            mic = mic_in_use(cfg) or ""
+    q = cfg.get("quiet_hours") or {}
+    return {
+        "version": KOOVI_VERSION,
+        "config_path": str(CONFIG_PATH),
+        "error": error,
+        "enabled": cfg.get("enabled", True) is not False,
+        "mode": str(cfg.get("mode") or "voice").lower(),
+        "wait_for_mic": bool(cfg.get("wait_for_mic", True)),
+        "mic": mic,
+        "wait_for_agents": bool(cfg.get("wait_for_agents", True)),
+        "quiet_hours": {"start": q.get("start"), "end": q.get("end")},
+        "muted": [k for k, v in (cfg.get("projects") or {}).items() if isinstance(v, dict) and v.get("mute")],
+        "recent_projects": recent,
+    }
+
+
+def cmd_settings(*args):
+    snap = settings_snapshot()
+    if "--json" in args:
+        print(json.dumps(snap))
+        return 1 if snap["error"] else 0
+    if snap["error"]:
+        print(f"ERROR your settings file has a line Koovi cannot read: {snap['error']}")
+        print(f"Nothing can be changed until it is fixed in {snap['config_path']}  (/koovi:doctor shows more)")
+        return 1
+    on = lambda yes: "on" if yes else "off"
+    mode = snap["mode"]
+    print(f"Koovi is {'ON' if snap['enabled'] else 'OFF'}" + (f" · {MODES.get(mode, mode)} (mode: {mode})" if snap["enabled"] else ""))
+    now = ""
+    if snap["wait_for_mic"]:
+        now = " · right now: " + (snap["mic"] or "nothing") if snap["mic"] is not None else " · right now: cannot tell"
+    print(f"Stay quiet during calls (wait_for_mic): {on(snap['wait_for_mic'])}{now}")
+    print(f"Wait for research to finish (wait_for_agents): {on(snap['wait_for_agents'])}")
+    q = snap["quiet_hours"]
+    print("Quiet hours: " + (f"{q['start']} to {q['end']}" if q["start"] and q["end"] else "off"))
+    print("Muted projects: " + (", ".join(snap["muted"]) or "none"))
+    print(f"Settings file: {snap['config_path']}")
     return 0
 
 
 def cmd_status():
     cfg = load_config()
-    print(f"Koovi {KOOVI_VERSION}  settings: {CONFIG_PATH if CONFIG_PATH.exists() else 'built-in defaults (no settings file yet)'}")
+    print(off_notice(cfg) + f"Koovi {KOOVI_VERSION}  settings: {CONFIG_PATH if CONFIG_PATH.exists() else 'built-in defaults (no settings file yet)'}")
     cmd_light()
     muted = [k for k, v in (cfg.get("projects") or {}).items() if isinstance(v, dict) and v.get("mute")]
     print("muted projects: " + (", ".join(muted) if muted else "none"))
@@ -1780,7 +1942,11 @@ def cmd_voice(*name):
     if not any(ln.startswith(name + " ") for ln in out.splitlines()):
         print(f"'{name}' is not installed. Run: koovi.sh voices")
         return 1
-    set_config_value("voice", name)
+    try:
+        set_config_value("voice", name)
+    except SettingsUnreadable as exc:
+        print(f"not changed: your settings file has a line Koovi cannot read ({exc}). Fix it in {CONFIG_PATH}")
+        return 1
     print(f"voice set to '{name}' in {CONFIG_PATH}")
     return cmd_test("done", "Payments")
 
@@ -1828,6 +1994,8 @@ def main(argv):
         return cmd_mute(False, *args)
     if cmd == "status":
         return cmd_status()
+    if cmd == "settings":
+        return cmd_settings(*args)
     if cmd == "version":
         print(KOOVI_VERSION)
         return 0
