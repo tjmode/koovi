@@ -836,6 +836,20 @@ class MenuBarIcon(Sandbox):
         self.assertEqual(koovi.cmd_set("menu_bar", "true"), 0)
         self.assertIn(("menu-start",), self.detached)
 
+    def test_an_icon_stopped_while_starting_is_not_rebuilt(self):
+        tries = []
+
+        def stopped_on_purpose():
+            tries.append(1)
+            yield ["sh", "-c", "kill -TERM $$"]
+            tries.append(2)
+            yield ["sh", "-c", "sleep 5"]
+        self.addCleanup(setattr, koovi, "menu_commands", koovi.menu_commands)
+        koovi.menu_commands = stopped_on_purpose
+        self.assertEqual(koovi.cmd_menu_start(), 0)
+        self.assertEqual(tries, [1], "a stop on purpose is not a broken icon: no fallback")
+        self.assertIn("stopped while starting", self.diary())
+
     def test_start_at_login_points_at_the_shim(self):
         import plistlib
         self.addCleanup(setattr, koovi.subprocess, "run", koovi.subprocess.run)

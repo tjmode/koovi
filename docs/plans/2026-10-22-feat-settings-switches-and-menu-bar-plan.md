@@ -232,7 +232,7 @@ built for, the menu quits and the next hook starts the new one.
 - [x] Idle CPU of the menu process about 0 with the menu closed (0.01 s over 20 s, 46 MB)
 - [ ] Manual check on a Mac with a notch and many icons, and with the icon switched off under
       "Allow in the Menu Bar"
-- [ ] Open bug, cause proven, waiting for Tony's go: `menu-start` treats a deliberate stop
+- [x] Fixed 2026-10-22 after Tony's go (test fails on the old code, passes on the new): `menu-start` treats a deliberate stop
       (`koovi menu hide` within its 1.5 s start check) as a failed start and builds a fallback copy,
       which then quits because the icon is hidden. Proof: diary line "stopped by SIGTERM from pid 38408",
       the `menu hide` run right after icon 38407. Fix: after a failed start, stop if `menu_bar` is false

@@ -1357,6 +1357,10 @@ def cmd_menu_start():
         if rc == 0:
             return 0  # another copy is already up
         said = errors.read_text(errors="replace").strip()[-300:]
+        if rc in (143, -15) or not load_config().get("menu_bar", True):
+            # stopped on purpose (hidden, or replaced) while we watched it start: not a broken icon
+            log("menu", "-", "menu bar icon was stopped while starting, so no second try", said=said or None)
+            return 0
         sender = re.search(r"SIGTERM from pid (\d+)", said)
         if sender:  # name the process that stopped it, while it may still be there to ask
             name = subprocess.run(["ps", "-p", sender.group(1), "-o", "comm="], capture_output=True, text=True)
