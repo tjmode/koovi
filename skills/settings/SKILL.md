@@ -34,7 +34,8 @@ Show the user Koovi's main switches and change the ones they pick. Do nothing el
    use it only when it clearly means one of the options; otherwise leave that setting alone.
 
 4. Reply in one or two plain sentences: what changed, or that nothing changed. Then add this line:
-   `/koovi:mute` silences this project, `/koovi:test` plays a sample line.
+   `/koovi:mute` silences this project, `/koovi:test` plays a sample line. On a Mac the same switches
+   are in the Koovi icon in the menu bar.
 
 If the AskUserQuestion tool is not available, show what step 1 printed, then the `/koovi:set` line
 that changes each switch (for example `/koovi:set enabled false`), and stop.

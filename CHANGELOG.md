@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0
+
+- A Koovi icon in the Mac menu bar. One click shows whether Koovi is on, how it reaches you,
+  whether it stays quiet during calls (with the app holding the microphone right now, like
+  "Zoom is using the mic"), whether it waits for research, quiet hours, muted projects, a test
+  line and the last thing it said. The icon gets a slash while Koovi is off.
+- It appears with the first message in any session, and is replaced by itself when Koovi updates.
+  "Start at login" keeps it after a restart; "Hide from menu bar" removes it until
+  `/koovi:koovi menu show`.
+- It is only a face: every change goes through `koovi.sh set` into the same settings file, and it
+  wakes only when that file changes or you open it.
+- `/koovi:doctor` says whether the icon is running, and where to look when macOS hides it.
+
 ## 0.11.0
 
 - `/koovi:settings`: the main switches in one place, changed by clicking. On or off, voice or

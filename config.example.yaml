@@ -5,6 +5,10 @@
 
 # false: Koovi still keeps track of your sessions but never speaks or flashes. /koovi:settings turns it back on.
 enabled: true
+# macOS: the Koovi icon in the menu bar, with these switches a click away. It appears with your next
+# Claude Code message. "Hide from menu bar" in its menu sets this to false; /koovi:settings or
+# "koovi.sh menu show" brings it back.
+menu_bar: true
 
 assistant: Koovi         # what the voice calls itself. Rename it to anything you like.
 user: boss               # what it calls you

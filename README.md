@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/tjmode/koovi/actions/workflows/ci.yml"><img src="https://github.com/tjmode/koovi/actions/workflows/ci.yml/badge.svg" alt="tests"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.11.0-2ea44f" alt="version"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.12.0-2ea44f" alt="version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue" alt="licence"></a>
   <img src="https://img.shields.io/badge/macOS-ready-black?logo=apple&logoColor=white" alt="macOS">
   <img src="https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-supported-6b46c1" alt="Claude Code, Codex, Cursor">
@@ -107,6 +107,20 @@ and nothing tells Koovi that you did.
 <p align="center">
   <img src="assets/koovi-light.gif" alt="A red frame pulsing around the screen with the session named in the corner" width="860">
 </p>
+
+## The menu bar icon
+
+On a Mac, Koovi puts a small waveform in the menu bar the first time a session sends a message.
+Click it to turn Koovi on or off, pick voice, screen light or auto, keep it quiet during calls (it
+shows which app has the microphone right now), set quiet hours, mute a project, or hear a test line.
+The icon gets a slash through it while Koovi is off.
+
+- Do not see it? On macOS 26, open System Settings › Menu Bar › Allow in the Menu Bar and switch
+  it on. On a MacBook with a notch, icons that do not fit hide behind it.
+- "Start at login" in its menu keeps it there after a restart. "Hide from menu bar" removes it;
+  `/koovi:koovi menu show` brings it back.
+- It only shows and flips switches. Every change goes through Koovi itself, into the same
+  `~/.koovi/config.yaml`.
 
 ## Good to know
 

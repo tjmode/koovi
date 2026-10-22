@@ -29,6 +29,7 @@ Commands for you (the /koovi:koovi command in Claude Code runs these too):
   koovi.py light          what the screen light shows right now (and the current mode)
   koovi.py light test     show a demo flash
   koovi.py light off      clear the screen light
+  koovi.py menu [show|hide|login on|login off]   the Koovi icon in the macOS menu bar
 """
 
 import contextlib
@@ -50,7 +51,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.11.0"
+KOOVI_VERSION = "0.12.0"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -70,6 +71,12 @@ LIGHT_SRC = HERE / "light" / "KooviLight.swift"
 LIGHT_BIN = HERE / "light" / "koovi-light"       # helper shipped with Koovi (macOS)
 LIGHT_BUILT = STATE_DIR / "bin" / "koovi-light"  # helper built here if the shipped one cannot run
 LIGHT_PS1 = HERE / "light" / "KooviLight.ps1"    # the same idea for Windows
+BIN_DIR = STATE_DIR / "bin"
+SHIM = BIN_DIR / "koovi"                         # always runs the Koovi that is installed now; the menu calls this
+MENU_SRC = HERE / "menu" / "KooviMenu.swift"
+MENU_BIN = HERE / "menu" / "koovi-menu"          # the menu bar icon, shipped with Koovi (macOS)
+MENU_LOCK = STATE_DIR / "menu.lock"              # held by the running menu, with its pid inside
+LOGIN_ITEM = Path.home() / "Library" / "LaunchAgents" / "com.tjmode.koovi.menu.plist"
 
 DEFAULTS = {
     "enabled": True,  # false: Koovi still keeps track of your sessions, but never speaks or flashes
@@ -85,6 +92,7 @@ DEFAULTS = {
     "wait_for_background_tasks": False,  # only for people whose background work always wakes the session quickly
     "wait_for_agents": True,  # research agents always finish and wake the session, so their pause is not "done"
     "remind_for": ["asking", "permission"],
+    "menu_bar": True,  # macOS: the Koovi icon in the menu bar. "Hide from menu bar" sets this to false
     "mode": "voice",  # voice | quiet (screen light only) | auto (voice on headphones, light on speakers)
     "light": {
         "enabled": True,
@@ -1258,6 +1266,154 @@ def cmd_light_start():
     return 1
 
 
+# ----------------------------------------------------------------------------- menu bar icon
+
+def write_shim():
+    """~/.koovi/bin/koovi runs the Koovi installed now. Plugin updates move Koovi to a new folder;
+    the menu and the login item only ever know this one path."""
+    text = ("#!/bin/sh\n# Written by Koovi on every hook. The menu bar icon finds Koovi through this file.\n"
+            f'K="{HERE / "koovi.sh"}"\n[ -x "$K" ] && exec "$K" "$@"\nexit 1\n')
+    if SHIM.exists() and SHIM.read_text() == text:
+        return
+    BIN_DIR.mkdir(parents=True, exist_ok=True)
+    atomic_write(SHIM, text)
+    SHIM.chmod(0o755)
+
+
+def menu_owner():
+    """(pid, version) of the running menu, or (0, ""). It holds MENU_LOCK while it runs, with both written
+    inside; the window list cannot see a menu bar icon on macOS 26."""
+    if not fcntl or not MENU_LOCK.exists():
+        return 0, ""
+    with open(MENU_LOCK, "a+") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.seek(0)
+            words = handle.read().split()
+            pid = int(words[0]) if words and words[0].isdigit() else -1
+            return pid, (words[1] if len(words) > 1 else "")
+        fcntl.flock(handle, fcntl.LOCK_UN)
+        return 0, ""
+
+
+def menu_running():
+    return menu_owner()[0] != 0
+
+
+def menu_keep_up():
+    """Called on every hook: the icon is there, and it is the one for this version of Koovi."""
+    write_shim()
+    pid, version = menu_owner()
+    if pid and version != KOOVI_VERSION:
+        menu_stop()  # Koovi was updated; the old menu goes and the new one takes its place
+        log("menu", "-", f"replacing the menu bar icon from Koovi {version or 'unknown'}")
+        pid = 0
+    if not pid:
+        spawn_detached("menu-start")
+
+
+def menu_commands():
+    """Ways to start the menu bar icon, best first: the shipped one, else one built here for this version."""
+    args = [str(SHIM), KOOVI_VERSION]
+    if os.access(MENU_BIN, os.X_OK):
+        yield [str(MENU_BIN)] + args
+    built = BIN_DIR / f"koovi-menu-{KOOVI_VERSION}"
+    if not os.access(built, os.X_OK):
+        if not MENU_SRC.exists():
+            log("menu", "-", f"ERROR menu source missing: {MENU_SRC}")
+            return
+        BIN_DIR.mkdir(parents=True, exist_ok=True)
+        build = subprocess.run(["xcrun", "swiftc", "-O", "-o", str(built), str(MENU_SRC)],
+                               capture_output=True, text=True, timeout=600)
+        if build.returncode != 0:
+            log("menu", "-", f"ERROR could not build the menu bar icon: {build.stderr.strip()[-200:]}")
+            return
+        log("menu", "-", f"built the menu bar icon at {built}")
+    yield [str(built)] + args
+
+
+def cmd_menu_start():
+    """Runs in the background: put the Koovi icon in the menu bar, unless it is there or you hid it."""
+    if OS != MAC or not load_config().get("menu_bar", True):
+        return 0
+    write_shim()
+    for _ in range(10):  # an old copy that was just told to quit lets go of the lock in a moment
+        if not menu_running():
+            break
+        time.sleep(0.2)
+    else:
+        return 0
+    for command in menu_commands():
+        errors = STATE_DIR / "menu.err"  # what the menu says when it fails, kept for the diary
+        with open(errors, "w") as err:
+            proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                    stderr=err, start_new_session=True)
+        try:
+            rc = proc.wait(timeout=1.5)
+        except subprocess.TimeoutExpired:
+            log("menu", "-", "menu bar icon started")
+            return 0
+        if rc == 0:
+            return 0  # another copy is already up
+        said = errors.read_text(errors="replace").strip()[-300:]
+        sender = re.search(r"SIGTERM from pid (\d+)", said)
+        if sender:  # name the process that stopped it, while it may still be there to ask
+            name = subprocess.run(["ps", "-p", sender.group(1), "-o", "comm="], capture_output=True, text=True)
+            said += f" ({name.stdout.strip() or 'gone already'})"
+        log("menu", "-", f"menu bar icon {Path(command[0]).name} could not start (code {rc}), trying the next option",
+            said=said or None)
+    log("menu", "-", "ERROR no working menu bar icon")
+    return 1
+
+
+def menu_stop():
+    pid = menu_owner()[0]
+    if pid > 0:
+        with contextlib.suppress(OSError):
+            os.kill(pid, 15)
+
+
+def set_login_item(on):
+    """Start the menu bar icon when you log in: a LaunchAgent that runs the shim, so updates never break it."""
+    if on:
+        import plistlib
+        write_shim()
+        LOGIN_ITEM.parent.mkdir(parents=True, exist_ok=True)
+        LOGIN_ITEM.write_bytes(plistlib.dumps({
+            "Label": "com.tjmode.koovi.menu", "ProgramArguments": [str(SHIM), "menu-start"],
+            "RunAtLoad": True, "AbandonProcessGroup": True}))
+    elif LOGIN_ITEM.exists():
+        subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}/com.tjmode.koovi.menu"], capture_output=True)
+        LOGIN_ITEM.unlink()
+
+
+def cmd_menu(action="", *args):
+    """koovi.sh menu [show|hide|login on|login off]"""
+    if OS != MAC:
+        print("the menu bar icon is for macOS; use /koovi:settings instead")
+        return 1
+    if action == "show":
+        cmd_set("menu_bar", "true")
+        return cmd_menu_start()
+    if action == "hide":
+        cmd_set("menu_bar", "false")
+        menu_stop()
+        return 0
+    if action == "login" and args and args[0] in ("on", "off"):
+        set_login_item(args[0] == "on")
+        print(f"start at login: {args[0]}")
+        return 0
+    if action:
+        print("usage: koovi.sh menu [show | hide | login on | login off]")
+        return 1
+    cfg = load_config()
+    print(f"menu bar icon: {'running' if menu_running() else 'not running'}"
+          f"{'' if cfg.get('menu_bar', True) else ' (hidden: koovi.sh menu show)'}")
+    print(f"start at login: {'on' if LOGIN_ITEM.exists() else 'off'}")
+    return 0
+
+
 # ----------------------------------------------------------------------------- decisions
 
 def announce(cfg, st, s, sid, event, spoken, folder, kind, now, check_focus, question="", **why):
@@ -1419,6 +1575,9 @@ def cmd_hook(event):
         if OS == MAC and cfg.get("wait_for_mic", True):
             with contextlib.suppress(Exception):
                 mic_in_use(cfg)  # notice a call app on the mic now, so a call muted later is still known as a call
+        if OS == MAC and cfg.get("menu_bar", True):
+            with contextlib.suppress(Exception):
+                menu_keep_up()
         if event == "prompt" and is_system_notice(payload.get("prompt")):
             s["last_wake"] = now  # background work woke the session; you did not type, so nothing is acknowledged
             s["ended"] = False
@@ -1607,6 +1766,10 @@ def cmd_doctor():
     check(f"settings file reads ({CONFIG_PATH})", readable, f"fix this line: {problem}")
     cfg = load_config()
     print("  " + off_notice(cfg) if off_notice(cfg) else "", end="")
+    if OS == MAC and cfg.get("menu_bar", True):
+        check("menu bar icon running", menu_running(),
+              "it starts with your next Claude Code message, or now with: koovi.sh menu show. "
+              "Running but not visible? System Settings > Menu Bar > Allow in the Menu Bar, or the notch is hiding it")
     command, _ = speech_command(cfg, "test")
     check("something on this machine can talk", bool(command),
           "install a speech program: sudo apt install speech-dispatcher")
@@ -1841,6 +2004,8 @@ def cmd_set(key="", *value):
         print(f"not changed: your settings file has a line Koovi cannot read ({exc}). Fix it in {CONFIG_PATH}")
         return 1
     print(f"{key} set to {_yaml_value(new) or 'off'}")
+    if key == "menu_bar" and new is True and OS == MAC:
+        spawn_detached("menu-start")
     if key == "enabled" and new is False:
         light_clear_all(load_config())
         print("Koovi is off. It keeps track of your sessions but will not speak or flash until you turn it on.")
@@ -1895,7 +2060,38 @@ def settings_snapshot():
         "quiet_hours": {"start": q.get("start"), "end": q.get("end")},
         "muted": [k for k, v in (cfg.get("projects") or {}).items() if isinstance(v, dict) and v.get("mute")],
         "recent_projects": recent,
+        "mic_name": app_name(mic) if mic else mic,
+        "last_said": last_said(),
+        "menu_bar": cfg.get("menu_bar", True) is not False,
+        "login": LOGIN_ITEM.exists(),
     }
+
+
+APP_NAMES = (("us.zoom.", "Zoom"), ("com.microsoft.teams", "Teams"), ("com.tinyspeck.slackmacgap", "Slack"),
+             ("com.hnc.Discord", "Discord"), ("com.apple.FaceTime", "FaceTime"), ("com.cisco.webex", "Webex"),
+             ("com.apple.WebKit", "Safari"), ("com.google.Chrome", "Chrome"), ("com.brave.Browser", "Brave"),
+             ("company.thebrowser.", "Arc"), ("com.microsoft.edgemac", "Edge"), ("org.mozilla.firefox", "Firefox"))
+
+
+def app_name(who):
+    """us.zoom.xos -> Zoom. Anything else stays as macOS named it."""
+    return next((name for prefix, name in APP_NAMES if str(who).startswith(prefix)), str(who))
+
+
+def last_said():
+    """The last line Koovi spoke or flashed, from the diary: {"line", "at"} or None."""
+    try:
+        with open(LOG_FILE, "rb") as f:
+            f.seek(max(0, f.seek(0, 2) - 20000))
+            lines = f.read().decode(errors="replace").splitlines()
+    except OSError:
+        return None
+    for ln in reversed(lines):
+        parts = ln.split(" | ", 3)
+        m = len(parts) == 4 and re.match(r"(?:SPEAK|LIGHT) \w+: (.*?)(?: \w+=\S+)*$", parts[3])
+        if m:
+            return {"line": m.group(1), "at": parts[0]}
+    return None
 
 
 def cmd_settings(*args):
@@ -1912,7 +2108,7 @@ def cmd_settings(*args):
     print(f"Koovi is {'ON' if snap['enabled'] else 'OFF'}" + (f" · {MODES.get(mode, mode)} (mode: {mode})" if snap["enabled"] else ""))
     now = ""
     if snap["wait_for_mic"]:
-        now = " · right now: " + (snap["mic"] or "nothing") if snap["mic"] is not None else " · right now: cannot tell"
+        now = " · right now: " + (snap["mic_name"] or "nothing") if snap["mic"] is not None else " · right now: cannot tell"
     print(f"Stay quiet during calls (wait_for_mic): {on(snap['wait_for_mic'])}{now}")
     print(f"Wait for research to finish (wait_for_agents): {on(snap['wait_for_agents'])}")
     q = snap["quiet_hours"]
@@ -1980,6 +2176,10 @@ def main(argv):
         return cmd_light(*args)
     if cmd == "light-start":
         return cmd_light_start()
+    if cmd == "menu-start":
+        return cmd_menu_start()
+    if cmd == "menu":
+        return cmd_menu(*args)
     if cmd == "voices":
         return cmd_voices()
     if cmd == "voice":

@@ -217,18 +217,26 @@ built for, the menu quits and the next hook starts the new one.
 - [x] Mockup right frame updated to the four-question form
 
 ### Phase 2
-- [ ] Step 1 spike: menu opens, a checkmark item and a view item with a switch both respond to clicks,
-      from a bare swiftc binary started by Python
-- [ ] Every row of the menu table works and changes the file only through `koovi set` / `mute`
+- [x] Step 1 spike: menu opens, a checkmark item and a view item with a switch both respond to clicks,
+      from a bare swiftc binary started by Python (2026-10-22: built with plain checkmark items, so no
+      view items were needed; the menu opened from Python and was screenshotted on the second display)
+- [x] Every row of the menu table works and changes the file only through `koovi set` / `mute`
+      (`koovi-menu --selftest` against a fake Koovi pressed every item: 18 commands, all valid)
 - [ ] Icon shows `waveform.slash` when off; status line matches `/koovi:status`
 - [ ] Mic line names the app during a real call, "nothing" otherwise
-- [ ] After a plugin update the old menu quits and the new one starts on the next hook
-- [ ] "Hide from menu bar" stays hidden across hooks until turned back on
+- [x] After a plugin update the old menu quits and the new one starts on the next hook (end-to-end, throwaway home)
+- [x] "Hide from menu bar" stays hidden across hooks until turned back on (end-to-end)
 - [ ] Start at login works after a restart and shows in System Settings › Login Items
-- [ ] CI builds `menu/KooviMenu.swift` like it builds the light helper
-- [ ] Idle CPU of the menu process about 0 with the menu closed (`top -pid`)
+      (the LaunchAgent is written and removed correctly; a real restart is not verified)
+- [x] CI builds `menu/KooviMenu.swift` like it builds the light helper (step added; runs on the next push)
+- [x] Idle CPU of the menu process about 0 with the menu closed (0.01 s over 20 s, 46 MB)
 - [ ] Manual check on a Mac with a notch and many icons, and with the icon switched off under
       "Allow in the Menu Bar"
+- [ ] Open bug, cause proven, waiting for Tony's go: `menu-start` treats a deliberate stop
+      (`koovi menu hide` within its 1.5 s start check) as a failed start and builds a fallback copy,
+      which then quits because the icon is hidden. Proof: diary line "stopped by SIGTERM from pid 38408",
+      the `menu hide` run right after icon 38407. Fix: after a failed start, stop if `menu_bar` is false
+      or the exit was SIGTERM
 
 ## Success Metrics
 

@@ -20,3 +20,7 @@ jobs:
         run: |
           xcrun swiftc -O -target arm64-apple-macos12 -o /tmp/koovi-light light/KooviLight.swift
           test -x /tmp/koovi-light
+      - name: Build the menu bar icon
+        run: |
+          xcrun swiftc -O -target arm64-apple-macos12 -o /tmp/koovi-menu menu/KooviMenu.swift
+          test -x /tmp/koovi-menu

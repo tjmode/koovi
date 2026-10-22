@@ -44,6 +44,10 @@ class Sandbox(unittest.TestCase):
         koovi.CALL_FILE = self.tmp / "call.json"
         koovi.STATE_LOCK = self.tmp / "state.lock"
         koovi.CONFIG_LOCK = self.tmp / "config.lock"
+        koovi.BIN_DIR = self.tmp / "bin"
+        koovi.SHIM = self.tmp / "bin" / "koovi"
+        koovi.MENU_LOCK = self.tmp / "menu.lock"
+        koovi.LOGIN_ITEM = self.tmp / "LaunchAgents" / "koovi.plist"
         koovi.SPEECH_LOCK = self.tmp / "speech.lock"
         self.jobs, self.detached = [], []
         koovi.spawn_worker = lambda job: self.jobs.append(job)
@@ -766,6 +770,91 @@ class SettingsScreen(Sandbox):
         self.assertEqual(snap["recent_projects"], ["payments", "checkout"])
         self.assertEqual(snap["version"], koovi.KOOVI_VERSION)
         self.assertEqual(snap["error"], "")
+
+
+@unittest.skipUnless(koovi.OS == koovi.MAC and koovi.fcntl, "the menu bar icon is macOS only")
+class MenuBarIcon(Sandbox):
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(setattr, koovi.os, "kill", koovi.os.kill)
+        self.killed = []
+        koovi.os.kill = lambda pid, sig: self.killed.append(pid)
+
+    def hook(self):
+        self.addCleanup(setattr, koovi, "hook_payload", koovi.hook_payload)
+        koovi.hook_payload = lambda: {"session_id": "s1", "cwd": str(self.tmp / "proj"), "prompt": "go"}
+        self.addCleanup(setattr, koovi, "mic_in_use", koovi.mic_in_use)
+        koovi.mic_in_use = lambda cfg=None: ""
+        koovi.cmd_hook("prompt")
+
+    def a_menu_is_running(self, version):
+        import fcntl
+        handle = open(koovi.MENU_LOCK, "w")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.write(f"4242 {version}\n")
+        handle.flush()
+        self.addCleanup(handle.close)
+
+    def test_the_shim_runs_the_koovi_installed_now(self):
+        koovi.write_shim()
+        text = koovi.SHIM.read_text()
+        self.assertIn(str(koovi.HERE / "koovi.sh"), text)
+        self.assertTrue(os.access(koovi.SHIM, os.X_OK))
+        before = koovi.SHIM.stat().st_mtime_ns
+        koovi.write_shim()
+        self.assertEqual(koovi.SHIM.stat().st_mtime_ns, before, "unchanged, so not written again")
+
+    def test_a_hook_brings_the_icon_up(self):
+        self.hook()
+        self.assertIn(("menu-start",), self.detached)
+        self.assertTrue(koovi.SHIM.exists())
+
+    def test_a_hidden_icon_stays_hidden(self):
+        koovi.set_config_value("menu_bar", False)
+        self.hook()
+        self.assertNotIn(("menu-start",), self.detached)
+        self.assertEqual(koovi.cmd_menu_start(), 0)
+
+    def test_a_running_icon_of_this_version_is_left_alone(self):
+        self.a_menu_is_running(koovi.KOOVI_VERSION)
+        self.assertEqual(koovi.menu_owner(), (4242, koovi.KOOVI_VERSION))
+        self.hook()
+        self.assertEqual((self.killed, self.detached), ([], []))
+
+    def test_an_icon_from_before_an_update_is_replaced(self):
+        self.a_menu_is_running("0.11.0")
+        self.hook()
+        self.assertEqual(self.killed, [4242])
+        self.assertIn(("menu-start",), self.detached)
+        self.assertIn("replacing the menu bar icon from Koovi 0.11.0", self.diary())
+
+    def test_hide_and_show(self):
+        self.a_menu_is_running(koovi.KOOVI_VERSION)
+        self.assertEqual(koovi.cmd_menu("hide"), 0)
+        self.assertFalse(koovi.load_config()["menu_bar"])
+        self.assertEqual(self.killed, [4242])
+        self.assertEqual(koovi.cmd_set("menu_bar", "true"), 0)
+        self.assertIn(("menu-start",), self.detached)
+
+    def test_start_at_login_points_at_the_shim(self):
+        import plistlib
+        self.addCleanup(setattr, koovi.subprocess, "run", koovi.subprocess.run)
+        koovi.subprocess.run = lambda *a, **k: None  # never touch the real launchd from a test
+        self.assertEqual(koovi.cmd_menu("login", "on"), 0)
+        item = plistlib.loads(koovi.LOGIN_ITEM.read_bytes())
+        self.assertEqual(item["ProgramArguments"], [str(koovi.SHIM), "menu-start"])
+        self.assertTrue(item["RunAtLoad"])
+        self.assertTrue(koovi.settings_snapshot()["login"])
+        self.assertEqual(koovi.cmd_menu("login", "off"), 0)
+        self.assertFalse(koovi.LOGIN_ITEM.exists())
+
+    def test_the_last_line_said_and_the_app_by_name(self):
+        koovi.log("stop", "Payments", "SPEAK done: Payments is done, boss.", took="26s", tools=5)
+        koovi.log("stop", "Checkout", "quiet: project is muted")
+        self.assertEqual(koovi.last_said()["line"], "Payments is done, boss.")
+        self.assertEqual(koovi.app_name("us.zoom.xos"), "Zoom")
+        self.assertEqual(koovi.app_name("com.google.Chrome.helper"), "Chrome")
+        self.assertEqual(koovi.app_name("ffmpeg"), "ffmpeg")
 
 
 class Packaging(unittest.TestCase):
