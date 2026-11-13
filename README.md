@@ -12,16 +12,26 @@
   <img src="https://img.shields.io/badge/Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-supported-6b46c1" alt="Claude Code, Codex, Cursor">
 </p>
 
-**Koovi tells you which of your coding sessions just finished or needs an answer.** Work in one
-window while three others run.
+**Koovi tells you out loud which of your coding sessions just finished or needs an answer.**
+Work in one window while three others run in Claude Code, Codex or Cursor.
 
 ```
 "Checkout is done."
 "Payments asks: Postgres or SQLite?"
 ```
 
-One line, one reminder if you do not reply, then silence. Your next message in that window is the
-answer. [Hear it](assets/koovi-voice.mp4) — ten seconds, turn the sound on.
+[Hear it](assets/koovi-voice.mp4) — ten seconds, turn the sound on.
+
+### Why Koovi
+
+- **It names the session.** Not a beep or a pop-up you have to go and read: it says which window,
+  and what it is asking.
+- **One line, one reminder, then silence.** Your next message in that window is the answer.
+- **It never talks over you.** Quiet while you are on a call (Zoom, Teams, Slack, Discord,
+  FaceTime) or dictating, and it waits until you are done.
+- **It pauses your music.** Apple Music and Spotify are turned down, and videos in the browser are
+  paused and play on from the same spot after.
+- **Nothing leaves your machine.** No account, no network code, MIT licensed.
 
 ## Install
 
