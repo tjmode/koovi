@@ -52,13 +52,14 @@ light:
   colors: {done: "#ff3b30", also_done: "#ff3b30", asking: "#ff9f0a", permission: "#ff9f0a", reminder: "#ff9f0a"}
   labels: {done: "done", also_done: "done", asking: "needs an answer", permission: "wants permission", reminder: "still waiting"}
 
-# While Koovi talks, turn music down to this volume, then put it back.
-# Works for Apple Music, Spotify, and browser tabs on the sites below.
+# While Koovi talks, turn Apple Music and Spotify down to this volume, then put it back.
+# Videos and music in browser tabs on the sites below are paused instead, and resume after.
 # Browser tabs need a one-time setting: Brave/Chrome: View > Developer > Allow JavaScript from Apple Events.
 # Safari: Develop > Allow JavaScript from Apple Events.
 music_duck: true
 music_duck_percent: 20
 browser_music_sites: [youtube.com, soundcloud.com, open.spotify.com, music.apple.com]
+browser_pause: true        # pause browser videos and music while Koovi talks; false turns them down instead
 
 # Never talk while the microphone is in use (dictation, calls). Koovi waits, then speaks.
 # If the microphone opens mid-sentence, Koovi stops at once and says the line again when it closes.

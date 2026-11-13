@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0
+
+- Koovi 1.0: voice or screen light, quiet during calls, waits for research, an off switch,
+  `/koovi:settings` and the menu bar icon.
+- Chats in Claude Desktop that have no project are called by their name. Their folder is called
+  something like `scratch-2026-11-11-47c6d0`, and Koovi read that out loud: "scratch 2026 11 11
+  47c6d0 is done". Now it says "Gold coin portfolio valuation is done", or "scratch chat" when the
+  chat has no name yet. A name you set under `projects:` still wins.
+- Videos and music in browser tabs are paused while Koovi talks, and play on from the same spot
+  after, so you miss nothing. `browser_pause: false` turns them down as before. A tab paused more
+  than ten minutes ago is never started again. Brave and Chrome still need View > Developer >
+  Allow JavaScript from Apple Events.
+- The diary now names the kinds of background work still running when a turn ends, like
+  `kinds=shell:27,subagent:2`. When Koovi says "done" while work still runs, the exact list from
+  Claude Code is kept in `~/.koovi/background.jsonl`, to find out why it spoke during research.
+
 ## 0.12.0
 
 - A Koovi icon in the Mac menu bar. One click shows whether Koovi is on, how it reaches you,

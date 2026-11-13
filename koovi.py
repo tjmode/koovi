@@ -51,7 +51,7 @@ except ImportError:
     fcntl = None
     import msvcrt
 
-KOOVI_VERSION = "0.12.0"
+KOOVI_VERSION = "1.0.0"
 
 MAC, WINDOWS, LINUX = "mac", "windows", "linux"
 OS = MAC if sys.platform == "darwin" else (WINDOWS if os.name == "nt" else LINUX)
@@ -67,6 +67,7 @@ STATE_LOCK = STATE_DIR / "state.lock"
 CONFIG_LOCK = STATE_DIR / "config.lock"           # one writer of config.yaml at a time
 LIGHT_FILE = STATE_DIR / "light.json"             # what the screen light shows right now
 CALL_FILE = STATE_DIR / "call.json"               # the last call app seen using the microphone
+BACKGROUND_FILE = STATE_DIR / "background.jsonl"  # raw background tasks of the last "done"s said while work still ran
 LIGHT_SRC = HERE / "light" / "KooviLight.swift"
 LIGHT_BIN = HERE / "light" / "koovi-light"       # helper shipped with Koovi (macOS)
 LIGHT_BUILT = STATE_DIR / "bin" / "koovi-light"  # helper built here if the shipped one cannot run
@@ -113,6 +114,7 @@ DEFAULTS = {
     "mic_ignore_apps": [],  # apps that keep the mic open all day without a person talking (bundle id or name)
     "call_grace_seconds": 600,  # a call app seen on the mic still counts this long while it plays sound (muted calls)
     "browser_music_sites": ["youtube.com", "soundcloud.com", "open.spotify.com", "music.apple.com"],
+    "browser_pause": True,  # pause browser videos and music while Koovi talks, so you miss nothing; false turns them down
     "quiet_hours": {"start": None, "end": None},
     "timing": {
         "min_task_seconds": 5,
@@ -304,11 +306,19 @@ def load_config():
     return cfg
 
 
-def project_settings(cfg, folder):
+# Claude Desktop runs chats without a project in folders like scratch-2026-11-11-47c6d0. Read out
+# loud that is a date and a code, so such a chat is called by its name, or simply "scratch chat".
+SCRATCH_FOLDER = re.compile(r"^scratch-\d{4}-\d{2}-\d{2}-[0-9a-f]+$", re.I)
+
+
+def project_settings(cfg, folder, rename=""):
     entry = (cfg.get("projects") or {}).get(folder) or {}
     if isinstance(entry, str):
         entry = {"say": entry}
-    say = entry.get("say") or folder.replace("-", " ").replace("_", " ")
+    say = entry.get("say")
+    if not say and SCRATCH_FOLDER.match(folder):
+        say = short_title(rename or "", max_words=4) or "scratch chat"
+    say = say or folder.replace("-", " ").replace("_", " ")
     return {"say": say, "mute": bool(entry.get("mute", False))}
 
 
@@ -531,6 +541,8 @@ def spoken_with_session(st, s, sid, folder, spoken, now):
     if len(active) < 2:
         return spoken
     label = short_title(s.get("rename") or "", max_words=3)
+    if label and label.lower() in spoken.lower():
+        label = ""  # the name is already what is spoken (a scratch chat), so count instead of saying it twice
     if label:
         return f"{spoken}, {label}"
     active.sort(key=lambda kv: kv[1].get("first_seen", 0))
@@ -635,9 +647,18 @@ BROWSER_SETTING_HINT = {"chromium": "View > Developer > Allow JavaScript from Ap
 JS_DUCK = ("(function(){var n=0,L=%s,ms=document.querySelectorAll('video,audio');"
            "for(var i=0;i<ms.length;i++){var m=ms[i];if(!m.paused&&!m.muted&&(m.volume>L||m.dataset.kooviVol)){"
            "if(!m.dataset.kooviVol){m.dataset.kooviVol=m.volume;}m.volume=L;n++;}}return n;})()")
+# Pausing keeps your place in a video; turning it down lets it run on while Koovi talks over it.
+JS_PAUSE = ("(function(){var n=0,ms=document.querySelectorAll('video,audio');"
+            "for(var i=0;i<ms.length;i++){var m=ms[i];if(!m.paused&&!m.muted){"
+            "m.dataset.kooviPaused=Date.now();m.pause();n++;}}return n;})()")
+# Puts back both kinds, so a tab heals whichever way it was quietened. A tab paused more than ten
+# minutes ago is left alone: sound starting out of nowhere is worse than a video left paused.
 JS_RESTORE = ("(function(){var n=0,ms=document.querySelectorAll('video,audio');"
               "for(var i=0;i<ms.length;i++){var m=ms[i];if(m.dataset.kooviVol){"
-              "m.volume=parseFloat(m.dataset.kooviVol);delete m.dataset.kooviVol;n++;}}return n;})()")
+              "m.volume=parseFloat(m.dataset.kooviVol);delete m.dataset.kooviVol;n++;}"
+              "if(m.dataset.kooviPaused){var t=parseFloat(m.dataset.kooviPaused);delete m.dataset.kooviPaused;"
+              "if(m.paused&&Date.now()-t<600000){var p=m.play();if(p&&p.catch){p.catch(function(){});}n++;}}}"
+              "return n;})()")
 
 
 def _browser_script(app, flavor):
@@ -708,14 +729,17 @@ def duck_browsers(cfg):
     if not sites:
         return []
     level = max(0.0, min(1.0, int(cfg.get("music_duck_percent", 20)) / 100.0))
+    pause = cfg.get("browser_pause", True)
+    js = JS_PAUSE if pause else JS_DUCK % level
     ducked = []
     for app, flavor in _running_browsers():
-        status, info = _run_browser_js(app, flavor, JS_DUCK % level, sites)
+        status, info = _run_browser_js(app, flavor, js, sites)
         if status == "ok" and info > 0:
             ducked.append((app, flavor))
-            log("music", app, f"turned down {info} playing tab(s) to {int(level * 100)}%")
+            log("music", app, f"paused {info} playing tab(s)" if pause
+                else f"turned down {info} playing tab(s) to {int(level * 100)}%")
         elif status == "off":
-            log("music", app, f"cannot turn browser music down: switch on {info}")
+            log("music", app, f"cannot {'pause' if pause else 'turn down'} browser music: switch on {info}")
         elif status == "err":
             log("music", app, f"browser check failed: {info}")
     return ducked
@@ -731,9 +755,9 @@ def restore_browsers(cfg, ducked):
     for app, flavor in _running_browsers():
         status, info = _run_browser_js(app, flavor, JS_RESTORE, sites)
         if status == "ok" and info > 0:
-            log("music", app, f"turned {info} tab(s) back up")
+            log("music", app, f"put {info} tab(s) back as they were")
         elif status == "err":
-            log("music", app, f"could not turn the music back up: {info}")
+            log("music", app, f"could not put the browser music back: {info}")
 
 
 def restore_music(saved):
@@ -1458,6 +1482,28 @@ def announce(cfg, st, s, sid, event, spoken, folder, kind, now, check_focus, que
 AGENT_TASKS = ("subagent", "workflow")
 
 
+def task_kinds(running):
+    """'shell:27,subagent:2': what was still running, so the diary shows why a "done" was or was not held."""
+    counts = {}
+    for t in running:
+        kind = str(t.get("type") or "?") if isinstance(t, dict) else type(t).__name__
+        counts[kind] = counts.get(kind, 0) + 1
+    return ",".join(f"{k}:{n}" for k, n in sorted(counts.items())) or None
+
+
+def capture_background(spoken, running, keep=50):
+    """Keep the raw background task list of the last spoken "done"s that had work still running.
+
+    Proof for "it said done while research was still going": the exact types Claude Code sent."""
+    try:
+        lines = BACKGROUND_FILE.read_text().splitlines()[-(keep - 1):] if BACKGROUND_FILE.exists() else []
+        lines.append(json.dumps({"at": dt.datetime.now().isoformat(timespec="seconds"), "project": spoken,
+                                 "tasks": running}, default=str))
+        atomic_write(BACKGROUND_FILE, "\n".join(lines) + "\n")
+    except Exception:
+        pass
+
+
 def decide_stop(cfg, st, s, sid, payload, spoken, folder, now):
     if payload.get("stop_hook_active"):
         log("stop", spoken, "quiet: stop_hook_active")
@@ -1475,7 +1521,7 @@ def decide_stop(cfg, st, s, sid, payload, spoken, folder, now):
     agents = [t for t in running if isinstance(t, dict) and t.get("type") in AGENT_TASKS]
     T = cfg["timing"]
     why = {"took": f"{duration}s" if duration is not None else "unknown", "tools": tools,
-           "background": len(running) or None, "agents": len(agents) or None}
+           "background": len(running) or None, "agents": len(agents) or None, "kinds": task_kinds(running)}
     asking = info["is_question"] and cfg.get("always_announce_questions", True)
     if not asking:  # a question back to you is always worth a word; other replies must earn it
         if agents and cfg.get("wait_for_agents", True):
@@ -1501,6 +1547,8 @@ def decide_stop(cfg, st, s, sid, payload, spoken, folder, now):
     if (kind == "done" and now - st.get("last_done_spoken_at", 0) < T["also_done_window_seconds"]
             and st.get("last_done_session") != sid):
         kind = "also_done"
+    if running and kind != "asking":
+        capture_background(spoken, running)
     announce(cfg, st, s, sid, "stop", spoken, folder, kind, now, check_focus=True, question=info["question"], **why)
 
 
@@ -1574,7 +1622,7 @@ def cmd_hook(event):
                   "first_seen": s.get("first_seen") or now})
         if event in ("stop", "notification", "permission"):
             s["rename"] = session_rename(payload.get("transcript_path")) or s.get("rename", "")
-        proj = project_settings(cfg, folder)
+        proj = project_settings(cfg, folder, s.get("rename"))
         spoken = proj["say"]
         if OS == MAC and cfg.get("wait_for_mic", True):
             with contextlib.suppress(Exception):
@@ -1816,9 +1864,9 @@ def cmd_doctor():
     for app, flavor in _running_browsers():
         status, info = _run_browser_js(app, flavor, "1", sites)
         if status == "ok":
-            check(f"{app}: can turn down music tabs" + ("" if info else " (no music tab open right now)"), True)
+            check(f"{app}: can pause music tabs" + ("" if info else " (no music tab open right now)"), True)
         elif status == "off":  # a switch you turn on once, and only if you play music in a browser
-            check(f"{app}: music tabs stay loud unless you switch on: {info}", True)
+            check(f"{app}: music tabs keep playing unless you switch on: {info}", True)
         elif "timed out" in info.lower() or "TimeoutExpired" in info:
             check(f"{app}: did not answer in time; music tabs may stay loud", True)
         else:

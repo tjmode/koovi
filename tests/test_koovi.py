@@ -42,6 +42,7 @@ class Sandbox(unittest.TestCase):
         koovi.LOG_FILE = self.tmp / "koovi.log"
         koovi.LIGHT_FILE = self.tmp / "light.json"
         koovi.CALL_FILE = self.tmp / "call.json"
+        koovi.BACKGROUND_FILE = self.tmp / "background.jsonl"
         koovi.STATE_LOCK = self.tmp / "state.lock"
         koovi.CONFIG_LOCK = self.tmp / "config.lock"
         koovi.BIN_DIR = self.tmp / "bin"
@@ -99,6 +100,24 @@ class ConfigReader(Sandbox):
         self.assertEqual(cfg["timing"]["min_task_seconds"], koovi.DEFAULTS["timing"]["min_task_seconds"])
         self.assertTrue(cfg["phrases"]["done"] and cfg["light"]["enabled"])
         self.assertEqual(koovi.project_settings(cfg, "x"), {"say": "x", "mute": False})
+
+    def test_a_scratch_chat_is_called_by_its_name_not_its_folder_code(self):
+        cfg = koovi.load_config()
+        folder = "scratch-2026-11-11-47c6d0"
+        self.assertEqual(koovi.project_settings(cfg, folder, "Gold coin portfolio valuation")["say"],
+                         "Gold coin portfolio valuation")
+        self.assertEqual(koovi.project_settings(cfg, folder)["say"], "scratch chat")
+        cfg["projects"] = {folder: "Gold"}
+        self.assertEqual(koovi.project_settings(cfg, folder, "Anything")["say"], "Gold", "your own name still wins")
+        self.assertEqual(koovi.project_settings(cfg, "scratchpad-notes", "Notes")["say"], "scratchpad notes")
+
+    def test_a_scratch_chat_name_is_not_said_twice(self):
+        now = time.time()
+        st = {"sessions": {
+            "a": {"folder": "scratch-2026-11-11-ab12", "first_seen": now - 9, "last_seen": now, "rename": "Gold coin"},
+            "b": {"folder": "scratch-2026-11-11-ab12", "first_seen": now - 5, "last_seen": now}}}
+        self.assertEqual(koovi.spoken_with_session(st, st["sessions"]["a"], "a", "scratch-2026-11-11-ab12", "Gold coin", now),
+                         "Gold coin, session 1")
 
     def test_reads_the_example_config(self):
         cfg = koovi.parse_yaml((ROOT / "config.example.yaml").read_text())
@@ -253,6 +272,22 @@ class Decisions(Sandbox):
         self.assertEqual(len(self.jobs), 1)
         self.assertEqual(self.jobs[0]["kind"], "done")
         self.assertIn("after_agents=True", self.diary())
+
+    def test_a_done_said_while_work_still_runs_keeps_the_raw_tasks(self):
+        """Proof for next time: the diary names the kinds, and the raw list is kept."""
+        path = transcript(self.tmp / "t.jsonl", tool_uses=2)
+        tasks = [{"id": "t1", "type": "shell", "status": "running"},
+                 {"id": "t2", "type": "local_agent", "status": "running", "agent_type": "general-purpose"}]
+        self.stop("s1", {"transcript_path": str(path), "background_tasks": tasks}, last_prompt=time.time() - 40)
+        self.assertEqual(len(self.jobs), 1)
+        self.assertIn("kinds=local_agent:1,shell:1", self.diary())
+        kept = [json.loads(x) for x in koovi.BACKGROUND_FILE.read_text().splitlines()]
+        self.assertEqual(kept[-1]["tasks"], tasks)
+
+    def test_the_raw_task_file_stays_small(self):
+        for i in range(60):
+            koovi.capture_background("Proj", [{"id": str(i), "type": "shell"}])
+        self.assertEqual(len(koovi.BACKGROUND_FILE.read_text().splitlines()), 50)
 
     def test_a_question_is_not_held_by_running_agents(self):
         path = transcript(self.tmp / "t.jsonl", tool_uses=1, assistant_text="Agents are out.\nShip it now or wait?")

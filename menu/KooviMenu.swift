@@ -7,7 +7,7 @@
 // when Koovi is updated (the next hook starts the new one), removed, or hidden.
 //
 // Build:  xcrun swiftc -O -o koovi-menu KooviMenu.swift
-// Run:    koovi-menu ~/.koovi/bin/koovi 0.12.0
+// Run:    koovi-menu ~/.koovi/bin/koovi 1.0.0
 // Checks: koovi-menu SHIM VERSION --peek 3    open the menu for 3 seconds, then quit
 //         koovi-menu SHIM VERSION --selftest  print the menu, press every item once, quit (use a fake shim)
 
